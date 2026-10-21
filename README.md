@@ -1,0 +1,65 @@
+# Monibar
+
+A macOS menu bar app that shows the CPU load in a small capsule and, on hover, a panel with CPU, memory, network, disk and the apps that use the most, which you can quit from there. Built to cost next to nothing while it sits in the menu bar.
+
+## Download
+
+Grab `Monibar.dmg` from the [latest release](https://github.com/emilevauge/monibar/releases/latest), open it and drag Monibar onto the `Applications` shortcut. Or from the command line:
+
+```sh
+curl -L -o Monibar.dmg \
+  https://github.com/emilevauge/monibar/releases/latest/download/Monibar.dmg
+hdiutil attach Monibar.dmg
+cp -R "/Volumes/Monibar/Monibar.app" /Applications/
+hdiutil detach "/Volumes/Monibar"
+xattr -dr com.apple.quarantine /Applications/Monibar.app   # not notarized, bypass Gatekeeper
+open /Applications/Monibar.app
+```
+
+Monibar then updates itself: when a new release is out, a notification offers to install it. The settings menu (gear icon) can also check for one. Requires macOS 14 or later.
+
+## Features
+
+- **CPU capsule**: the menu bar icon is a capsule that fills from left to right with the CPU load, green under 50 %, orange under 80 %, red above, with the number on top. The number is averaged over a window set in the settings menu (2 s to 60 s).
+- **Hover panel**: resting the pointer on the capsule opens the panel, which closes when the pointer leaves it. A click keeps it open until a click outside or Escape. Same behavior and layout as [Calbar](https://github.com/emilevauge/calbar).
+- **CPU**: user, system and GPU load, a history graph and one bar per core.
+- **Memory**: used out of total, split into app, wired and compressed memory, pressure, cache and swap.
+- **Network and disk**: read and write rates with mirrored graphs, free disk space.
+- **History**: graphs over 1 min, 15 min or 1 h.
+- **Top apps**: the 10 apps or processes using the most CPU or memory. Helper processes are grouped under their app (Chrome, Slack...). CPU is averaged over 10 s, 1 min, 1 h or 1 day, so the ranking stays steady.
+- **Quit apps**: click the cross, then confirm. Hold ⌥ while confirming to force quit (SIGKILL for a process).
+
+## Resource use
+
+With the panel closed, Monibar reads the total CPU load once every 2 s (one Mach call) for the icon, and once a minute takes a snapshot of each process's CPU counters (about 1 ms) for the 1 h and 1 day averages. Measured: about 0.03 % of one core and 32 MB of memory. Memory, network, disk, GPU and the process list are read only while the panel is open, and its views are freed when it closes.
+
+All history lives in memory and is lost when Monibar quits:
+
+| Data | Kept |
+|---|---|
+| CPU history (graph and icon) | 1 h, one point every 2 s |
+| Memory, network, disk, GPU | while the panel is open |
+| Per-process CPU snapshots | 1 h at one per minute, 24 h at one per 15 min |
+
+Processes owned by other users (root daemons) cannot be read without privileges: they are missing from the list but counted in the total CPU.
+
+## Build
+
+```sh
+./build.sh            # build/Monibar.app and build/Monibar.dmg
+./build.sh --install  # also copies to /Applications and relaunches
+```
+
+`./snapshot.sh panel.png [--light]` renders the panel to a PNG, for checking a layout change.
+
+## Release
+
+1. Bump `VERSION` and `BUILD` in `build.sh`.
+2. `./build.sh`
+3. `gh release create vX.Y.Z build/Monibar.dmg --title "Monibar X.Y.Z" --notes "..."`
+
+The updater reads the latest release from the GitHub API and installs its `Monibar.dmg` asset.
+
+## License
+
+MIT
