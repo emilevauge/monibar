@@ -11,19 +11,17 @@ struct PanelView: View {
         VStack(alignment: .leading, spacing: 0) {
             cpuSection
             Divider()
-            memorySection
+            ioSection(title: "Réseau", rates: (model.netIn, model.netOut),
+                      layers: [GraphLayer(series: model.hNetIn, color: .green),
+                               GraphLayer(series: model.hNetOut, color: .orange)])
             Divider()
             HStack(alignment: .top, spacing: 0) {
-                ioSection(title: "Réseau", symbol: "network",
-                          rates: (model.netIn, model.netOut),
-                          layers: [GraphLayer(series: model.hNetIn, color: .green),
-                                   GraphLayer(series: model.hNetOut, color: .orange)],
-                          footer: nil)
+                memorySection
                 Divider()
-                ioSection(title: "Disque", symbol: "internaldrive",
-                          rates: (model.diskRead, model.diskWrite),
+                ioSection(title: "Disque", rates: (model.diskRead, model.diskWrite),
                           layers: [GraphLayer(series: model.hDiskR, color: .teal),
                                    GraphLayer(series: model.hDiskW, color: .pink)],
+                          stacked: true,
                           footer: model.diskSpace.map { "\(Format.bytes($0.free)) libres" })
             }
             .fixedSize(horizontal: false, vertical: true)
@@ -70,65 +68,50 @@ struct PanelView: View {
 
     // MARK: Memory
 
+    /// Half width, beside the disk: legends one per line.
     private var memorySection: some View {
         let m = model.mem
         let total = Double(max(m.total, 1))
         return VStack(alignment: .leading, spacing: 6) {
-            SectionHeader(title: "Mémoire", value: "\(Format.bytes(m.used)) / \(Format.bytes(m.total))")
+            SectionHeader(title: "Mémoire", value: Format.bytes(m.used))
             SegmentBar(segments: [(Double(m.app) / total, .blue),
                                   (Double(m.wired) / total, .orange),
                                   (Double(m.compressed) / total, .purple),
                                   (Double(m.cached) / total, .gray.opacity(0.5))])
-            HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
                 Legend(color: .blue, text: "Apps \(Format.bytes(m.app))")
                 Legend(color: .orange, text: "Câblée \(Format.bytes(m.wired))")
                 Legend(color: .purple, text: "Compressée \(Format.bytes(m.compressed))")
-                Spacer(minLength: 0)
             }
-            Graph(layers: [GraphLayer(series: model.hMem, color: pressureColor)], maxValue: 1, height: 32)
-            HStack {
-                HStack(spacing: 4) {
-                    Circle().fill(pressureColor).frame(width: 6, height: 6)
-                    Text("Pression \(pressureLabel)")
-                }
-                Spacer()
-                Text("Cache \(Format.bytes(m.cached)) · Swap \(Format.bytes(m.swapUsed))")
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .monospacedDigit()
+            Graph(layers: [GraphLayer(series: model.hMem, color: .blue)], maxValue: 1, height: 32)
+            Text("Sur \(Format.bytes(m.total)) · Swap \(Format.bytes(m.swapUsed))")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+                .lineLimit(1)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-    }
-
-    private var pressureColor: Color {
-        switch model.mem.pressure {
-        case 4: .red
-        case 2: .orange
-        default: .green
-        }
-    }
-
-    private var pressureLabel: String {
-        switch model.mem.pressure {
-        case 4: "critique"
-        case 2: "élevée"
-        default: "normale"
-        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     // MARK: Network, disk
 
-    private func ioSection(title: String, symbol: String, rates: (down: Double, up: Double),
-                           layers: [GraphLayer], footer: String?) -> some View {
+    /// `stacked`: one rate per line, for the half-width disk section.
+    private func ioSection(title: String, rates: (down: Double, up: Double), layers: [GraphLayer],
+                           stacked: Bool = false, footer: String? = nil) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title).font(.system(size: 13, weight: .semibold))
-            HStack(spacing: 10) {
+            let legends = Group {
                 Legend(color: layers[0].color, text: "↓ \(Format.rate(rates.down))")
                 Legend(color: layers[1].color, text: "↑ \(Format.rate(rates.up))")
             }
-            Graph(layers: layers, minScale: 16 * 1024, mirrored: true, height: 32)
+            if stacked {
+                VStack(alignment: .leading, spacing: 2) { legends }
+            } else {
+                HStack(spacing: 10) { legends }
+            }
+            Graph(layers: layers, minScale: 16 * 1024, mirrored: true, height: stacked ? 32 : 40)
             if let footer {
                 Text(footer).font(.caption).foregroundStyle(.secondary)
             }

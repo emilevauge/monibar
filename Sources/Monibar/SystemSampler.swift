@@ -11,8 +11,6 @@ struct MemInfo {
     var free: UInt64 = 0
     var swapUsed: UInt64 = 0
     var swapTotal: UInt64 = 0
-    /// kern.memorystatus_vm_pressure_level: 1 normal, 2 warning, 4 critical.
-    var pressure: Int32 = 1
 
     var used: UInt64 { app + wired + compressed }
 }
@@ -203,11 +201,6 @@ final class SystemSampler {
         if sysctlbyname("vm.swapusage", &swap, &size, nil, 0) == 0 {
             mem.swapUsed = swap.xsu_used
             mem.swapTotal = swap.xsu_total
-        }
-        var level: Int32 = 0
-        size = MemoryLayout<Int32>.size
-        if sysctlbyname("kern.memorystatus_vm_pressure_level", &level, &size, nil, 0) == 0 {
-            mem.pressure = level
         }
     }
 
