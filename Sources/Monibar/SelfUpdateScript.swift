@@ -3,10 +3,10 @@ import Foundation
 /// The helper script that installs a downloaded update. The running app
 /// cannot replace its own bundle, so it starts this script detached and
 /// quits. The script waits for the app to exit, mounts the DMG, checks that
-/// the new app is signed by the same team with the same bundle id, swaps the
-/// bundle with a backup to roll back to, strips the quarantine flag and
-/// relaunches the app. Whatever fails, the installed app is put back and
-/// relaunched.
+/// the new app satisfies the running app's designated requirement (same
+/// bundle id, signed with the same certificate), swaps the bundle with a
+/// backup to roll back to, strips the quarantine flag and relaunches the
+/// app. Whatever fails, the installed app is put back and relaunched.
 enum SelfUpdateScript {
     /// POSIX single-quote escaping: wrap in '...', close, escape and reopen
     /// around embedded quotes.
@@ -14,15 +14,14 @@ enum SelfUpdateScript {
         "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
-    /// `teamID`: the running app's signing team, as `codesign -dv` prints it
-    /// ("not set" for an ad hoc build). The new app must match it.
+    /// `requirement`: the running app's designated requirement, as
+    /// `codesign -d -r-` prints it. The new app must satisfy it.
     static func make(
         bundlePath: String,
         dmgPath: String,
         workDir: String,
         pid: Int32,
-        bundleID: String,
-        teamID: String,
+        requirement: String,
         appName: String = "Monibar.app"
     ) -> String {
         let mount = (workDir as NSString).appendingPathComponent("mount")
@@ -64,15 +63,11 @@ enum SelfUpdateScript {
         mkdir -p "$MOUNT" || fail "no mount point"
         hdiutil attach -nobrowse -readonly -mountpoint "$MOUNT" "$DMG" || fail "cannot mount the DMG"
 
-        # Never replace the installed app with something that is not a valid
-        # Monibar signed by the same team: the quarantine flag is removed
+        # Never replace the installed app with something that is not Monibar
+        # signed with the same certificate: the quarantine flag is removed
         # below, so Gatekeeper would not check it.
         [ -x "$NEW/Contents/MacOS/Monibar" ] || fail "no \(appName) in the DMG"
-        codesign --verify --deep --strict "$NEW" || fail "invalid signature"
-        ID=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$NEW/Contents/Info.plist" 2>/dev/null)
-        [ "$ID" = \(quote(bundleID)) ] || fail "bundle id $ID"
-        TEAM=$(codesign -dv "$NEW" 2>&1 | sed -n 's/^TeamIdentifier=//p')
-        [ "$TEAM" = \(quote(teamID)) ] || fail "signed by team $TEAM"
+        codesign --verify --deep --strict -R=\(quote(requirement)) "$NEW" || fail "signature does not match the installed app"
 
         # Move the old bundle aside and copy the new one in; `fail` puts the
         # old one back if the copy fails, so the app is never missing.

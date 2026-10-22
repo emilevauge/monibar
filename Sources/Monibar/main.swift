@@ -60,6 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         time("panel open (setVisible true)", 1) { self.model.setVisible(true) }
         time("model.tick (open)", 30) { self.model.tick() }
         model.setVisible(false)
+        print("update requirement:", SelfUpdater.designatedRequirement() ?? "none (unsigned or ad hoc)")
         exit(0)
     }
 

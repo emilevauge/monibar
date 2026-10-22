@@ -15,6 +15,7 @@ enum SelfUpdater {
         case download(Int?)
         case staging
         case spawn
+        case unsigned
 
         var description: String {
             switch self {
@@ -24,6 +25,7 @@ enum SelfUpdater {
             case .download(let status): "Le téléchargement a échoué (HTTP \(status.map(String.init) ?? "?"))."
             case .staging: "L'installation n'a pas pu être préparée."
             case .spawn: "L'installation n'a pas pu démarrer."
+            case .unsigned: "Cette copie de Monibar n'est pas signée : la mise à jour ne pourrait pas être vérifiée."
             }
         }
     }
@@ -44,18 +46,22 @@ enum SelfUpdater {
         }
     }
 
-    /// The signing team of the running app, as `codesign -dv` prints it:
-    /// "not set" for an ad hoc build.
-    private static func runningTeamID() -> String {
+    /// The running app's designated requirement: its bundle id and the
+    /// certificate it is signed with. Nil for an unsigned or ad hoc build,
+    /// which then cannot update itself.
+    static func designatedRequirement() -> String? {
         var code: SecCode?
         var staticCode: SecStaticCode?
-        var info: CFDictionary?
+        var requirement: SecRequirement?
+        var text: CFString?
         guard SecCodeCopySelf([], &code) == errSecSuccess, let code,
               SecCodeCopyStaticCode(code, [], &staticCode) == errSecSuccess, let staticCode,
-              SecCodeCopySigningInformation(staticCode, SecCSFlags(rawValue: kSecCSSigningInformation), &info) == errSecSuccess,
-              let team = (info as? [String: Any])?[kSecCodeInfoTeamIdentifier as String] as? String
-        else { return "not set" }
-        return team
+              SecCodeCopyDesignatedRequirement(staticCode, [], &requirement) == errSecSuccess, let requirement,
+              SecRequirementCopyString(requirement, [], &text) == errSecSuccess, let text
+        else { return nil }
+        let string = text as String
+        // Ad hoc signatures only pin their own hash: no update could match.
+        return string.contains("cdhash") ? nil : string
     }
 
     private static func install(dmgURL: URL) async throws {
@@ -66,6 +72,7 @@ enum SelfUpdater {
         guard !bundlePath.contains("/AppTranslocation/") else { throw Failure.translocated }
         let parent = (bundlePath as NSString).deletingLastPathComponent
         guard FileManager.default.isWritableFile(atPath: parent) else { throw Failure.notWritable }
+        guard let requirement = designatedRequirement() else { throw Failure.unsigned }
 
         let workDir = (NSTemporaryDirectory() as NSString).appendingPathComponent("monibar-update-\(UUID().uuidString)")
         do {
@@ -88,7 +95,7 @@ enum SelfUpdater {
         let script = SelfUpdateScript.make(
             bundlePath: bundlePath, dmgPath: dmgPath, workDir: workDir,
             pid: ProcessInfo.processInfo.processIdentifier,
-            bundleID: Bundle.main.bundleIdentifier ?? "", teamID: runningTeamID()
+            requirement: requirement
         )
         do {
             try script.write(toFile: scriptPath, atomically: true, encoding: .utf8)

@@ -16,7 +16,7 @@ xattr -dr com.apple.quarantine /Applications/Monibar.app   # not notarized, bypa
 open /Applications/Monibar.app
 ```
 
-Monibar then updates itself: when a new release is out, a notification offers to install it. The update is installed only if the new app is signed by the same team with the same bundle id; otherwise the installed app stays and is relaunched. The settings menu (gear icon) can also check for one. Requires macOS 14 or later.
+Monibar then updates itself: when a new release is out, a notification offers to install it. The update is installed only if the new app satisfies the installed one's designated requirement (same bundle id, signed with the same certificate); otherwise the installed app stays and is relaunched. The settings menu (gear icon) can also check for one. Requires macOS 14 or later.
 
 ## Features
 
