@@ -103,6 +103,8 @@ final class PanelModel: ObservableObject {
     }
 
     var onIconWindowChange: (() -> Void)?
+    /// True when the Mac is offline or has no Internet access, for the icon.
+    var onOfflineChange: ((Bool) -> Void)?
 
     private let sampler: SystemSampler
     private let procSampler = ProcessSampler()
@@ -126,7 +128,10 @@ final class PanelModel: ObservableObject {
         let window = d.object(forKey: "procWindow") as? Int
         procWindow = ProcWindow.options.contains { $0.0 == window } ? window! : 10
         launchAtLogin = SMAppService.mainApp.status == .enabled
-        connectivity.onChange = { [weak self] in self?.internet = $0 }
+        connectivity.onChange = { [weak self] state in
+            self?.internet = state
+            self?.onOfflineChange?(state == .offline || state == .noInternet)
+        }
         connectivity.start()
     }
 

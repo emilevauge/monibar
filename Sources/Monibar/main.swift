@@ -12,6 +12,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model = PanelModel(sampler: sampler)
         status = StatusController(model: model)
         model.onIconWindowChange = { [weak self] in self?.updateIcon() }
+        // MB_OFFLINE (debug) keeps the no-Internet alert shown, to check the icon.
+        let forceOffline = ProcessInfo.processInfo.environment["MB_OFFLINE"] != nil
+        model.onOfflineChange = { [weak self] in self?.status.setOffline($0 || forceOffline) }
+        if forceOffline { status.setOffline(true) }
 
         sampler.sampleCPU()
         updateIcon()

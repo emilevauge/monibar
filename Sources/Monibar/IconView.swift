@@ -1,18 +1,29 @@
 import AppKit
 
-/// Menu bar capsule: a track tinted with the load color, filled from the left
-/// in proportion to CPU, the number in white on top, a thin white border. Built from CALayers, so
-/// an update only moves the fill edge and, when the number changes, swaps
-/// the text: no image is redrawn.
+/// Menu bar square: a track tinted with the load color, filled from the bottom
+/// in proportion to CPU, the number in white on top, a thin white border.
+/// Square rather than wide, so it reads as a gauge, not a battery.
+/// Without Internet, a red crossed-out Wi-Fi shows at its left and the view
+/// grows by `alertWidth`. Built from CALayers, so an update only moves the
+/// fill edge and, when the number changes, swaps the text: no image is
+/// redrawn.
 final class IconView: NSView {
-    static let font = NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .semibold)
-    static let capsule = NSSize(width: 21, height: 14)
+    static let font = NSFont.monospacedDigitSystemFont(ofSize: 9.5, weight: .semibold)
+    /// "100" only fits in a smaller size.
+    static let smallFont = NSFont.monospacedDigitSystemFont(ofSize: 8, weight: .semibold)
+    static let capsule = NSSize(width: 16, height: 16)
     static let size = NSSize(width: capsule.width, height: 22)
+    static let alertWidth: CGFloat = 12
+
+    /// Current width: wider while the alert shows.
+    var width: CGFloat { Self.capsule.width + (offline ? Self.alertWidth : 0) }
 
     private let track = CALayer()
     private let fill = CALayer()
     private let text = CATextLayer()
+    private let alert = CALayer()
     private var level: Level?
+    private(set) var offline = false
 
     /// Green under 50 %, orange under 80 %, red above.
     private enum Level {
@@ -44,7 +55,7 @@ final class IconView: NSView {
         track.borderWidth = 1
         track.borderColor = NSColor.white.withAlphaComponent(0.85).cgColor
         fill.anchorPoint = .zero
-        fill.frame = CGRect(x: 0, y: 0, width: 0, height: box.height)
+        fill.frame = CGRect(x: 0, y: 0, width: box.width, height: 0)
         track.addSublayer(fill)
 
         text.font = Self.font
@@ -56,6 +67,11 @@ final class IconView: NSView {
         text.contentsScale = NSScreen.main?.backingScaleFactor ?? 2
         track.addSublayer(text)
         layer?.addSublayer(track)
+
+        alert.contentsGravity = .center
+        alert.frame = CGRect(x: 0, y: 0, width: Self.alertWidth - 1, height: Self.size.height)
+        alert.isHidden = true
+        layer?.addSublayer(alert)
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -71,6 +87,34 @@ final class IconView: NSView {
     override func viewDidChangeBackingProperties() {
         super.viewDidChangeBackingProperties()
         text.contentsScale = window?.backingScaleFactor ?? 2
+        if offline { renderAlert() }
+    }
+
+    /// Shows or hides the no-Internet alert. The caller resizes the status
+    /// item to `width`.
+    func setOffline(_ on: Bool) {
+        guard on != offline else { return }
+        offline = on
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        if on { renderAlert() }
+        alert.isHidden = !on
+        track.frame.origin.x = on ? Self.alertWidth : 0
+        frame.size.width = width
+        CATransaction.commit()
+    }
+
+    /// The symbol, rendered once per alert at the screen's scale.
+    private func renderAlert() {
+        let config = NSImage.SymbolConfiguration(pointSize: 9, weight: .bold)
+            .applying(.init(paletteColors: [.systemRed]))
+        guard let image = NSImage(systemSymbolName: "wifi.slash", accessibilityDescription: nil)?
+            .withSymbolConfiguration(config) else { return }
+        let scale = window?.backingScaleFactor ?? 2
+        var rect = NSRect(origin: .zero, size: image.size)
+        alert.contents = image.cgImage(forProposedRect: &rect, context: nil,
+                                       hints: [.ctm: AffineTransform(scale: scale)])
+        alert.contentsScale = scale
     }
 
     /// `value` is the CPU load from 0 to 1.
@@ -78,9 +122,13 @@ final class IconView: NSView {
         let v = min(1, max(0, value))
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        text.string = "\(Int((v * 100).rounded()))"
-        fill.bounds.size.width = (Self.capsule.width * v).rounded()
-        let newLevel = Level(v)
+        let number = Int((v * 100).rounded())
+        text.string = "\(number)"
+        let size = number >= 100 ? Self.smallFont.pointSize : Self.font.pointSize
+        if text.fontSize != size { text.fontSize = size }
+        fill.bounds.size.height = (Self.capsule.height * v).rounded()
+        // From the number shown, so "50" is never green.
+        let newLevel = Level(Double(number) / 100)
         if newLevel != level {
             level = newLevel
             applyColors(newLevel)

@@ -51,13 +51,26 @@ final class StatusController: NSResponder {
 
     // MARK: Icon
 
+    /// No Internet, offline or not: a red crossed-out Wi-Fi beside the
+    /// capsule, the item 12 pt wider while it shows.
+    func setOffline(_ on: Bool) {
+        guard on != icon.offline else { return }
+        icon.setOffline(on)
+        item.length = icon.width + 4
+        updateAccessibility()
+    }
+
+    private func updateAccessibility() {
+        item.button?.setAccessibilityLabel("CPU \(lastText ?? "")%" + (icon.offline ? ", pas d'accès Internet" : ""))
+    }
+
     /// CPU averaged over the chosen window.
     func updateIcon(value: Double) {
         let text = "\(Int((value * 100).rounded()))"
         guard text != lastText else { return }
         lastText = text
         icon.update(value: value)
-        item.button?.setAccessibilityLabel("CPU \(text)%")
+        updateAccessibility()
     }
 
     // MARK: Hover
