@@ -31,15 +31,19 @@ Monibar then updates itself: when a new release is out, a notification offers to
 
 ## Resource use
 
-With the panel closed, Monibar reads the total CPU load once every 2 s (one Mach call) for the icon, and once a minute takes a snapshot of each process's CPU counters (about 1 ms) for the 1 h and 1 day averages. Measured: about 0.03 % of one core and 32 MB of memory. Memory, network, disk, GPU and the process list are read only while the panel is open, and its views are freed when it closes.
+With the panel closed, Monibar reads the total CPU load once every 2 s (one Mach call) for the icon. Once a minute, it reads memory, network, disk and GPU for the graphs, and takes a snapshot of each process's CPU counters (about 1 ms) for the 1 h and 1 day averages. Measured: about 0.03 % of one core and 32 MB of memory. While the panel is open, everything is read every 2 s, and its views are freed when it closes.
+
+Network, disk and CPU come from counters the kernel cumulates since boot: a point taken once a minute is the exact average of that minute, nothing is lost between points. Memory and GPU are readings, so a spike shorter than a minute can fall between two points while the panel is closed.
 
 All history lives in memory and is lost when Monibar quits:
 
 | Data | Kept |
 |---|---|
-| CPU history (graph and icon) | 1 h, one point every 2 s |
-| Memory, network, disk, GPU | while the panel is open |
+| CPU history | 1 h, one point every 2 s |
+| Memory, network, disk, GPU history | 1 h, one point every 2 s with the panel open, every minute with it closed |
 | Per-process CPU snapshots | 1 h at one per minute, 24 h at one per 15 min |
+
+The graphs leave a gap where nothing was measured, while the Mac slept for instance.
 
 Processes owned by other users (root daemons) cannot be read without privileges: they are missing from the list but counted in the total CPU.
 

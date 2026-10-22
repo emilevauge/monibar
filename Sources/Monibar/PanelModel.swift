@@ -13,13 +13,12 @@ enum HistoryRange: Int, CaseIterable, Identifiable {
         }
     }
 
-    var samples: Int {
-        let seconds: Double = switch self {
+    var seconds: Double {
+        switch self {
         case .m1: 60
         case .m15: 900
         case .h1: 3600
         }
-        return Int(seconds / SystemSampler.interval)
     }
 }
 
@@ -42,9 +41,9 @@ struct ProcRow: Identifiable, Equatable {
     }
 }
 
+/// Graph points, oldest first, nil where nothing was measured.
 struct Series {
-    var values: [Float] = []
-    var slots = 0
+    var values: [Float?] = []
 }
 
 /// What the panel shows. Everything here runs only while the panel is open:
@@ -127,35 +126,37 @@ final class PanelModel: ObservableObject {
         visible = v
         if v {
             update = UpdateChecker.available
-            sampler.startPanelSampling()
+            sampler.sampleOthers(withCores: true)
             refreshSystem()
             refreshHistory()
             lastProcs = procSampler.sample(window: TimeInterval(procWindow))
             rebuildRows()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
                 guard let self, self.visible else { return }
-                self.sampler.samplePanel()
+                self.sampler.sampleOthers(withCores: true)
                 self.refreshSystem()
                 self.refreshHistory()
                 self.refreshProcesses()
             }
         } else {
-            sampler.stopPanelSampling()
             procSampler.panelClosed()
             lastProcs = []
             appCache.removeAll()
         }
     }
 
-    /// Called once a minute: feeds the 1 h and 1 d averages of the process list.
+    /// Called once a minute: feeds the 1 h and 1 d averages of the process
+    /// list, and the history of the graphs while the panel is closed.
     func minuteTick() {
         procSampler.takeSnapshot()
+        // While open, the panel samples every tick already.
+        if !visible { sampler.sampleOthers(withCores: false) }
     }
 
     /// Called after each sampler tick.
     func tick() {
         guard visible else { return }
-        sampler.samplePanel()
+        sampler.sampleOthers(withCores: true)
         refreshSystem()
         refreshHistory()
         refreshProcesses()
@@ -176,9 +177,10 @@ final class PanelModel: ObservableObject {
     }
 
     private func refreshHistory() {
-        let w = range.samples, p = Self.graphPoints
-        let slots = Ring.slots(window: w, points: p)
-        func s(_ r: Ring) -> Series { Series(values: r.series(window: w, points: p), slots: slots) }
+        let now = Date().timeIntervalSinceReferenceDate
+        func s(_ t: TimeSeries) -> Series {
+            Series(values: t.buckets(window: range.seconds, count: Self.graphPoints, now: now))
+        }
         hTotal = s(sampler.hCPU)
         hUser = s(sampler.hUser)
         hGPU = s(sampler.hGPU)

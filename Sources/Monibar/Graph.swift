@@ -41,32 +41,42 @@ struct Graph: View {
     private func scaleTop() -> Float {
         if let maxValue { return maxValue }
         var m = minScale
-        for l in layers { for v in l.series.values where v > m { m = v } }
+        for l in layers { for case let v? in l.series.values where v > m { m = v } }
         return m > 0 ? m * 1.1 : 1
     }
 
+    /// One path per run of measured buckets: a gap stays empty.
     private func draw(_ layer: GraphLayer, in ctx: inout GraphicsContext,
                       width: CGFloat, base: CGFloat, span: CGFloat, top: Float) {
         let values = layer.series.values
-        let slots = max(layer.series.slots, 2)
         guard !values.isEmpty else { return }
-        let step = width / CGFloat(slots - 1)
-        let first = slots - values.count
-        func pt(_ i: Int) -> CGPoint {
-            let v = CGFloat(min(values[i], top) / top)
-            return CGPoint(x: CGFloat(first + i) * step, y: base + span * v)
+        let step = width / CGFloat(values.count)
+        func y(_ v: Float) -> CGFloat { base + span * CGFloat(min(v, top) / top) }
+
+        var i = 0
+        while i < values.count {
+            guard values[i] != nil else { i += 1; continue }
+            var line = Path()
+            let first = i
+            while i < values.count, let v = values[i] {
+                let x = (CGFloat(i) + 0.5) * step
+                // A run's ends reach the bucket edges, so a lone bucket
+                // still shows as a short segment.
+                if i == first { line.move(to: CGPoint(x: CGFloat(i) * step, y: y(v))) }
+                line.addLine(to: CGPoint(x: x, y: y(v)))
+                i += 1
+            }
+            let lastX = CGFloat(i) * step
+            if let v = values[i - 1] { line.addLine(to: CGPoint(x: lastX, y: y(v))) }
+            if layer.fill {
+                var area = line
+                area.addLine(to: CGPoint(x: lastX, y: base))
+                area.addLine(to: CGPoint(x: CGFloat(first) * step, y: base))
+                area.closeSubpath()
+                ctx.fill(area, with: .color(layer.color.opacity(0.35)))
+            }
+            ctx.stroke(line, with: .color(layer.color), lineWidth: 1)
         }
-        var line = Path()
-        line.move(to: pt(0))
-        for i in 1..<values.count { line.addLine(to: pt(i)) }
-        if layer.fill {
-            var area = line
-            area.addLine(to: CGPoint(x: pt(values.count - 1).x, y: base))
-            area.addLine(to: CGPoint(x: pt(0).x, y: base))
-            area.closeSubpath()
-            ctx.fill(area, with: .color(layer.color.opacity(0.35)))
-        }
-        ctx.stroke(line, with: .color(layer.color), lineWidth: 1)
     }
 }
 

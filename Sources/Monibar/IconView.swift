@@ -5,8 +5,8 @@ import AppKit
 /// an update only moves the fill edge and, when the number changes, swaps
 /// the text: no image is redrawn.
 final class IconView: NSView {
-    static let font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold)
-    static let capsule = NSSize(width: 30, height: 16)
+    static let font = NSFont.monospacedDigitSystemFont(ofSize: 10.5, weight: .semibold)
+    static let capsule = NSSize(width: 24, height: 14)
     static let size = NSSize(width: capsule.width, height: 22)
 
     private let track = CALayer()
@@ -37,7 +37,7 @@ final class IconView: NSView {
         let box = CGRect(x: 0, y: (Self.size.height - Self.capsule.height) / 2,
                          width: Self.capsule.width, height: Self.capsule.height)
         track.frame = box
-        track.cornerRadius = 5
+        track.cornerRadius = 4
         track.masksToBounds = true
         fill.anchorPoint = .zero
         fill.frame = CGRect(x: 0, y: 0, width: 0, height: box.height)

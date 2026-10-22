@@ -18,23 +18,32 @@ struct MemInfo {
 }
 
 /// Collects system-wide metrics. Every read is a direct Mach, sysctl or IOKit
-/// call: no subprocess, no polling of /usr/bin tools. With the panel closed,
-/// only `sampleCPU` runs.
+/// call: no subprocess, no polling of /usr/bin tools.
+///
+/// The total CPU is read every 2 s for the icon. The other metrics are read
+/// every 2 s while the panel is open and once a minute while it is closed.
+/// Network, disk and CPU come from counters the kernel cumulates since boot,
+/// so a minute point is the exact average of that minute; memory and GPU are
+/// readings, one per point.
 final class SystemSampler {
     static let interval: TimeInterval = 2
-    static let historyCapacity = 1800 // 1 h at 2 s
+    /// Points further apart than this span a sleep or a stall: they are not
+    /// recorded, the graph shows a gap there.
+    private static let maxCPUGap: Double = 10
+    private static let maxGap: Double = 150
 
     private let host = mach_host_self()
     private var prevTicks: [UInt32] = []
     private var prevTotalTicks: [UInt32] = []
+    private var prevCPUTime: Double = 0
     private var prevNet: (rx: UInt64, tx: UInt64)?
     private var prevDisk: (r: UInt64, w: UInt64)?
-    private var prevTime: TimeInterval = 0
+    private var prevTime: Double = 0
     private var netBuf = [UInt8]()
     private var netIncluded: [UInt16: Bool] = [:]
     private var diskDrivers: [io_service_t] = []
     private var gpuService: io_service_t = 0
-    private var ticks = 0
+    private var samples = 0
 
     private(set) var cores: [Double] = []
     private(set) var cpuUser = 0.0
@@ -46,21 +55,22 @@ final class SystemSampler {
     private(set) var diskWrite = 0.0
     private(set) var gpu: Double?
 
-    private(set) var hUser = Ring(capacity: historyCapacity)
-    private(set) var hSys = Ring(capacity: historyCapacity)
-    private(set) var hMem = Ring(capacity: historyCapacity)
-    private(set) var hNetIn = Ring(capacity: historyCapacity)
-    private(set) var hNetOut = Ring(capacity: historyCapacity)
-    private(set) var hDiskR = Ring(capacity: historyCapacity)
-    private(set) var hDiskW = Ring(capacity: historyCapacity)
-    private(set) var hGPU = Ring(capacity: historyCapacity)
-    /// User + system, used by the menu bar icon. CPU history is the only one
-    /// kept while the panel is closed; the others cover the time it was open.
-    private(set) var hCPU = Ring(capacity: historyCapacity)
+    private(set) var hUser = TimeSeries()
+    private(set) var hCPU = TimeSeries()
+    private(set) var hMem = TimeSeries()
+    private(set) var hNetIn = TimeSeries()
+    private(set) var hNetOut = TimeSeries()
+    private(set) var hDiskR = TimeSeries()
+    private(set) var hDiskW = TimeSeries()
+    private(set) var hGPU = TimeSeries()
+    /// User + system for the icon's averaging window, up to 60 s.
+    private(set) var recentCPU = Ring(capacity: 30)
 
     var cpuTotal: Double { cpuUser + cpuSys }
 
-    /// Icon path, runs every tick: total CPU only, one Mach call.
+    private static var now: Double { Date().timeIntervalSinceReferenceDate }
+
+    /// Every tick: total CPU only, one Mach call.
     func sampleCPU() {
         var load = host_cpu_load_info()
         var count = mach_msg_type_number_t(MemoryLayout<host_cpu_load_info>.size / MemoryLayout<integer_t>.size)
@@ -70,6 +80,9 @@ final class SystemSampler {
             }
         }
         guard kr == KERN_SUCCESS else { return }
+        let now = Self.now
+        let since = prevCPUTime
+        prevCPUTime = now
         let t = load.cpu_ticks
         let cur = [t.0, t.1, t.2, t.3] // user, system, idle, nice
         defer { prevTotalTicks = cur }
@@ -80,56 +93,32 @@ final class SystemSampler {
         guard all > 0 else { return }
         cpuUser = Double(d[Int(CPU_STATE_USER)] + d[Int(CPU_STATE_NICE)]) / Double(all)
         cpuSys = Double(d[Int(CPU_STATE_SYSTEM)]) / Double(all)
-        hUser.push(Float(cpuUser))
-        hSys.push(Float(cpuSys))
-        hCPU.push(Float(cpuTotal))
+        recentCPU.push(Float(cpuTotal))
+        guard now - since <= Self.maxCPUGap else { return }
+        hUser.add(Float(cpuUser), from: since, to: now)
+        hCPU.add(Float(cpuTotal), from: since, to: now)
     }
 
-    /// Clears the panel-only history and seeds the counters, so the panel
-    /// shows rates from its first tick. Called when the panel opens.
-    func startPanelSampling() {
-        hMem = Ring(capacity: Self.historyCapacity)
-        hNetIn = Ring(capacity: Self.historyCapacity)
-        hNetOut = Ring(capacity: Self.historyCapacity)
-        hDiskR = Ring(capacity: Self.historyCapacity)
-        hDiskW = Ring(capacity: Self.historyCapacity)
-        hGPU = Ring(capacity: Self.historyCapacity)
-        prevNet = nil
-        prevDisk = nil
-        prevTime = 0
-        prevTicks = []
-        netIn = 0; netOut = 0; diskRead = 0; diskWrite = 0
-        refreshDiskDrivers()
-        samplePanel(push: false)
-    }
-
-    /// Releases what only the panel needs. Called when the panel closes.
-    func stopPanelSampling() {
-        diskDrivers.forEach { IOObjectRelease($0) }
-        diskDrivers.removeAll()
-        if gpuService != 0 { IOObjectRelease(gpuService); gpuService = 0 }
-        netBuf = []
-        prevTicks = []
-    }
-
-    /// Panel path: per-core CPU, memory, network, disk, GPU.
-    func samplePanel(push: Bool = true) {
-        let now = ProcessInfo.processInfo.systemUptime
+    /// Memory, network, disk and GPU; per-core CPU too while the panel is
+    /// open. Called every tick with the panel open, once a minute otherwise.
+    func sampleOthers(withCores: Bool) {
+        let now = Self.now
         let dt = prevTime > 0 ? now - prevTime : 0
+        let since = prevTime
         prevTime = now
+        let record = dt > 0 && dt <= Self.maxGap
 
-        sampleCores()
+        if withCores { sampleCores() } else { prevTicks = [] }
         sampleMemory()
 
         let net = readNet()
-        if let p = prevNet, dt > 0 {
-            netIn = Double(net.rx &- p.rx) / dt
-            netOut = Double(net.tx &- p.tx) / dt
-            if net.rx < p.rx || net.tx < p.tx { netIn = 0; netOut = 0 }
+        if let p = prevNet, dt > 0, net.rx >= p.rx, net.tx >= p.tx {
+            netIn = Double(net.rx - p.rx) / dt
+            netOut = Double(net.tx - p.tx) / dt
         }
         prevNet = net
 
-        if ticks % 30 == 0 { refreshDiskDrivers() }
+        if samples % 30 == 0 { refreshDiskDrivers() }
         let disk = readDisk()
         if let p = prevDisk, dt > 0, disk.r >= p.r, disk.w >= p.w {
             diskRead = Double(disk.r - p.r) / dt
@@ -138,15 +127,15 @@ final class SystemSampler {
         prevDisk = disk
 
         gpu = readGPU()
-        ticks += 1
-        guard push else { return }
+        samples += 1
+        guard record else { return }
 
-        hMem.push(mem.total > 0 ? Float(Double(mem.used) / Double(mem.total)) : 0)
-        hNetIn.push(Float(netIn))
-        hNetOut.push(Float(netOut))
-        hDiskR.push(Float(diskRead))
-        hDiskW.push(Float(diskWrite))
-        hGPU.push(Float(gpu ?? 0))
+        hMem.add(mem.total > 0 ? Float(Double(mem.used) / Double(mem.total)) : 0, from: since, to: now)
+        hNetIn.add(Float(netIn), from: since, to: now)
+        hNetOut.add(Float(netOut), from: since, to: now)
+        hDiskR.add(Float(diskRead), from: since, to: now)
+        hDiskW.add(Float(diskWrite), from: since, to: now)
+        if let gpu { hGPU.add(Float(gpu), from: since, to: now) }
     }
 
     // MARK: CPU

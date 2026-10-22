@@ -1,4 +1,5 @@
 /// Fixed-size ring buffer of samples, oldest values overwritten first.
+/// Used for the icon's averaging window.
 struct Ring {
     private var buf: [Float]
     private var head = 0
@@ -14,46 +15,73 @@ struct Ring {
         count = min(count + 1, buf.count)
     }
 
-    /// Value `i` steps back from the newest one (0 = newest).
-    private func back(_ i: Int) -> Float {
-        buf[(head - 1 - i + buf.count * 2) % buf.count]
-    }
-
     func mean(last n: Int) -> Float {
         let n = min(n, count)
         guard n > 0 else { return 0 }
         var s: Float = 0
-        for i in 0..<n { s += back(i) }
+        for i in 0..<n { s += buf[(head - 1 - i + buf.count * 2) % buf.count] }
         return s / Float(n)
     }
+}
 
-    /// Newest `n` values, oldest first, without downsampling.
-    func tail(_ n: Int) -> [Float] {
-        let n = min(n, count)
-        return (0..<n).reversed().map(back)
-    }
+/// Values over wall-clock time, each covering the interval since the
+/// previous point: a rate computed from cumulated kernel counters, or a
+/// reading. Points are 2 s apart while the panel is open and 1 min apart
+/// while it is closed, so one series holds both.
+struct TimeSeries {
+    /// One hour of history, plus some slack so trimming runs in chunks.
+    static let maxAge: Double = 3600
+    private static let trimSlack: Double = 300
 
-    /// Covers the last `window` samples with at most `points` bucket means, oldest first.
-    /// When history is shorter than the window, fewer buckets are returned and
-    /// the caller right-aligns them against `slots(window:points:)`.
-    func series(window: Int, points: Int) -> [Float] {
-        let slots = Ring.slots(window: window, points: points)
-        let m = min(window, count)
-        guard m > 0, slots > 0 else { return [] }
-        let bucket = Double(window) / Double(slots)
-        let outLen = min(slots, Int((Double(m) / bucket).rounded(.up)))
-        var out = [Float](repeating: 0, count: outLen)
-        for k in 0..<outLen {
-            let lo = Int((Double(k) * bucket).rounded())
-            let hi = min(m, max(lo + 1, Int((Double(k + 1) * bucket).rounded())))
-            var s: Float = 0
-            for i in lo..<hi { s += back(i) }
-            out[outLen - 1 - k] = s / Float(hi - lo)
+    private var starts: [Double] = []
+    private var ends: [Double] = []
+    private var values: [Float] = []
+
+    mutating func add(_ v: Float, from start: Double, to end: Double) {
+        guard end > start else { return }
+        starts.append(start)
+        ends.append(end)
+        values.append(v)
+        if let first = ends.first, end - first > Self.maxAge + Self.trimSlack {
+            let k = ends.firstIndex { $0 >= end - Self.maxAge } ?? ends.count
+            starts.removeFirst(k)
+            ends.removeFirst(k)
+            values.removeFirst(k)
         }
-        return out
     }
 
-    static func slots(window: Int, points: Int) -> Int {
-        min(window, points)
+    /// The last `window` seconds before `now` cut into `count` buckets,
+    /// oldest first: the mean of each bucket weighted by the time each point
+    /// covers in it, nil where nothing was measured (Mac asleep, app not
+    /// running).
+    func buckets(window: Double, count: Int, now: Double) -> [Float?] {
+        guard count > 0, window > 0 else { return [] }
+        let from = now - window
+        let width = window / Double(count)
+        var sums = [Double](repeating: 0, count: count)
+        var weights = [Double](repeating: 0, count: count)
+
+        // First point ending after `from`: points are in time order.
+        var lo = 0, hi = ends.count
+        while lo < hi {
+            let mid = (lo + hi) / 2
+            if ends[mid] <= from { lo = mid + 1 } else { hi = mid }
+        }
+        for i in lo..<ends.count {
+            let s = max(starts[i], from), e = min(ends[i], now)
+            guard e > s else { continue }
+            var b = min(count - 1, Int((s - from) / width))
+            while b < count {
+                let bs = from + Double(b) * width, be = bs + width
+                let overlap = min(e, be) - max(s, bs)
+                if overlap > 0 {
+                    sums[b] += Double(values[i]) * overlap
+                    weights[b] += overlap
+                }
+                if be >= e { break }
+                b += 1
+            }
+        }
+        return (0..<count).map { weights[$0] > 0 ? Float(sums[$0] / weights[$0]) : nil }
     }
 }

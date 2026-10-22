@@ -33,6 +33,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.status.show(pinned: true) }
         }
         if args.contains("--snapshot") { snapshot(light: args.contains("--light")) }
+        if let n = ProcessInfo.processInfo.environment["MB_CYCLES"].flatMap(Int.init) { cycle(n) }
+    }
+
+    /// Debug: opens and closes the panel `n` times off screen, for leak
+    /// checks (`leaks` after "cycles done").
+    private func cycle(_ n: Int) {
+        guard n > 0 else {
+            print("cycles done")
+            fflush(stdout)
+            return
+        }
+        let window = NSWindow(contentRect: NSRect(x: -5000, y: -5000, width: 10, height: 10),
+                              styleMask: .borderless, backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        model.setVisible(true)
+        window.contentView = NSHostingView(rootView: PanelView(model: model))
+        window.orderFrontRegardless()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            self.tick()
+            window.orderOut(nil)
+            window.contentView = nil
+            self.model.setVisible(false)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { self.cycle(n - 1) }
+        }
     }
 
     /// Debug: shows the panel in a plain window and prints its window number,
@@ -76,7 +100,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func updateIcon() {
         let window = max(1, Int((Double(model.iconWindow) / SystemSampler.interval).rounded()))
-        status.updateIcon(value: Double(sampler.hCPU.mean(last: window)))
+        status.updateIcon(value: Double(sampler.recentCPU.mean(last: window)))
     }
 }
 
