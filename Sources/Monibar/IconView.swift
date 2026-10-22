@@ -3,7 +3,7 @@ import AppKit
 /// Menu bar icon: a CPU chip whose body fills from the bottom with the load,
 /// green under 50 %, orange under 80 %, red above, three pins on each side.
 /// No number: the fill and its color tell the load. Without Internet, a
-/// crossed-out Wi-Fi shows in the middle of the chip.
+/// crossed-out Wi-Fi in the outline's ink shows in the middle of the chip.
 ///
 /// Built from CALayers, so an update only moves the fill edge: no image is
 /// redrawn.
@@ -87,6 +87,7 @@ final class IconView: NSView {
         super.viewDidChangeEffectiveAppearance()
         applyInk()
         level.map(applyColors)
+        if offline { renderAlert() }
     }
 
     override func viewDidChangeBackingProperties() {
@@ -105,11 +106,19 @@ final class IconView: NSView {
         CATransaction.commit()
     }
 
-    /// White crossed-out Wi-Fi, rendered once per alert at the screen's
-    /// scale. Bold, so it holds over the colored fill.
+    /// Crossed-out Wi-Fi in the outline's ink, white on a dark menu bar and
+    /// black on a light one, rendered at the screen's scale. Bold, so it
+    /// holds over the colored fill.
     private func renderAlert() {
+        var ink = NSColor.labelColor
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            ink = NSColor(cgColor: NSColor.labelColor.cgColor) ?? .labelColor
+        }
+        // Opaque: the label color is slightly translucent, which washes the
+        // symbol out over the fill.
+        ink = ink.withAlphaComponent(1)
         let config = NSImage.SymbolConfiguration(pointSize: 9.5, weight: .heavy)
-            .applying(.init(paletteColors: [.white]))
+            .applying(.init(paletteColors: [ink]))
         guard let image = NSImage(systemSymbolName: "wifi.slash", accessibilityDescription: nil)?
             .withSymbolConfiguration(config) else { return }
         let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
