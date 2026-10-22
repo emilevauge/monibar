@@ -3,25 +3,20 @@ import AppKit
 /// Menu bar square: a track tinted with the load color, filled from the bottom
 /// in proportion to CPU, the number in white on top, a thin white border.
 /// Square rather than wide, so it reads as a gauge, not a battery.
-/// Without Internet, a red crossed-out Wi-Fi shows at its left and the view
-/// grows by `alertWidth`. Built from CALayers, so an update only moves the
-/// fill edge and, when the number changes, swaps the text: no image is
-/// redrawn.
+/// Without Internet, red dashes run over the white border. Built from
+/// CALayers, so an update only moves the fill edge and, when the number
+/// changes, swaps the text: no image is redrawn.
 final class IconView: NSView {
     static let font = NSFont.monospacedDigitSystemFont(ofSize: 9.5, weight: .semibold)
     /// "100" only fits in a smaller size.
     static let smallFont = NSFont.monospacedDigitSystemFont(ofSize: 8, weight: .semibold)
     static let capsule = NSSize(width: 16, height: 16)
     static let size = NSSize(width: capsule.width, height: 22)
-    static let alertWidth: CGFloat = 12
-
-    /// Current width: wider while the alert shows.
-    var width: CGFloat { Self.capsule.width + (offline ? Self.alertWidth : 0) }
 
     private let track = CALayer()
     private let fill = CALayer()
     private let text = CATextLayer()
-    private let alert = CALayer()
+    private let alert = CAShapeLayer()
     private var level: Level?
     private(set) var offline = false
 
@@ -68,8 +63,14 @@ final class IconView: NSView {
         track.addSublayer(text)
         layer?.addSublayer(track)
 
-        alert.contentsGravity = .center
-        alert.frame = CGRect(x: 0, y: 0, width: Self.alertWidth - 1, height: Self.size.height)
+        // Red dashes over the white border: the white gaps keep them visible
+        // even on a red gauge.
+        alert.frame = box
+        alert.path = CGPath(roundedRect: CGRect(origin: .zero, size: box.size).insetBy(dx: 0.75, dy: 0.75),
+                            cornerWidth: 3.5, cornerHeight: 3.5, transform: nil)
+        alert.fillColor = nil
+        alert.lineWidth = 1.5
+        alert.lineDashPattern = [2, 1.5]
         alert.isHidden = true
         layer?.addSublayer(alert)
     }
@@ -87,34 +88,17 @@ final class IconView: NSView {
     override func viewDidChangeBackingProperties() {
         super.viewDidChangeBackingProperties()
         text.contentsScale = window?.backingScaleFactor ?? 2
-        if offline { renderAlert() }
     }
 
-    /// Shows or hides the no-Internet alert. The caller resizes the status
-    /// item to `width`.
+    /// Shows or hides the no-Internet alert.
     func setOffline(_ on: Bool) {
         guard on != offline else { return }
         offline = on
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        if on { renderAlert() }
+        alert.strokeColor = NSColor.systemRed.usingColorSpace(.sRGB)?.cgColor
         alert.isHidden = !on
-        track.frame.origin.x = on ? Self.alertWidth : 0
-        frame.size.width = width
         CATransaction.commit()
-    }
-
-    /// The symbol, rendered once per alert at the screen's scale.
-    private func renderAlert() {
-        let config = NSImage.SymbolConfiguration(pointSize: 9, weight: .bold)
-            .applying(.init(paletteColors: [.systemRed]))
-        guard let image = NSImage(systemSymbolName: "wifi.slash", accessibilityDescription: nil)?
-            .withSymbolConfiguration(config) else { return }
-        let scale = window?.backingScaleFactor ?? 2
-        var rect = NSRect(origin: .zero, size: image.size)
-        alert.contents = image.cgImage(forProposedRect: &rect, context: nil,
-                                       hints: [.ctm: AffineTransform(scale: scale)])
-        alert.contentsScale = scale
     }
 
     /// `value` is the CPU load from 0 to 1.

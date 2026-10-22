@@ -51,12 +51,10 @@ final class StatusController: NSResponder {
 
     // MARK: Icon
 
-    /// No Internet, offline or not: a red crossed-out Wi-Fi beside the
-    /// capsule, the item 12 pt wider while it shows.
+    /// No Internet, offline or not: red dashes around the gauge.
     func setOffline(_ on: Bool) {
         guard on != icon.offline else { return }
         icon.setOffline(on)
-        item.length = icon.width + 4
         updateAccessibility()
     }
 

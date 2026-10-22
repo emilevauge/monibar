@@ -20,7 +20,7 @@ Monibar then updates itself: when a new release is out, a notification offers to
 
 ## Features
 
-- **CPU gauge**: the menu bar icon is a small square that fills from the bottom with the CPU load, green under 50 %, orange under 80 %, red above, with the number on top. The number is averaged over a window set in the settings menu (2 s to 60 s). When the Mac is offline or has no Internet access, a red crossed-out Wi-Fi shows at its left.
+- **CPU gauge**: the menu bar icon is a small square that fills from the bottom with the CPU load, green under 50 %, orange under 80 %, red above, with the number on top. The number is averaged over a window set in the settings menu (2 s to 60 s). When the Mac is offline or has no Internet access, its border turns to red dashes.
 - **Hover panel**: resting the pointer on the capsule opens the panel, which closes when the pointer leaves it. A click keeps it open until a click outside or Escape. Same behavior and layout as [Calbar](https://github.com/emilevauge/calbar).
 - **CPU**: user, system and GPU load, and a history graph.
 - **Memory**: used out of total, split into app, wired and compressed memory, and swap.
