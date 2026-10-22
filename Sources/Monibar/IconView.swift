@@ -1,23 +1,30 @@
 import AppKit
 
-/// Menu bar square: a track tinted with the load color, filled from the bottom
-/// in proportion to CPU, the number in white on top, a thin white border.
-/// Square rather than wide, so it reads as a gauge, not a battery.
-/// Without Internet, red dashes run over the white border. Built from
-/// CALayers, so an update only moves the fill edge and, when the number
-/// changes, swaps the text: no image is redrawn.
+/// Menu bar icon: a CPU chip whose body fills from the bottom with the load,
+/// green under 50 %, orange under 80 %, red above, three pins on each side
+/// and the number in white on top. The digits are Calbar's: monospaced bold,
+/// shrunk until they fit, centered on their cap height. Without Internet, the
+/// body's outline turns to red dashes over white.
+///
+/// Built from CALayers, so an update only moves the fill edge and, when the
+/// number changes, swaps the text: no image is redrawn.
 final class IconView: NSView {
-    static let font = NSFont.monospacedDigitSystemFont(ofSize: 9.5, weight: .semibold)
-    /// "100" only fits in a smaller size.
-    static let smallFont = NSFont.monospacedDigitSystemFont(ofSize: 8, weight: .semibold)
-    static let capsule = NSSize(width: 16, height: 16)
-    static let size = NSSize(width: capsule.width, height: 22)
+    private static let body: CGFloat = 14
+    private static let pinLength: CGFloat = 2.2
+    private static let pinWidth: CGFloat = 1.2
+    private static let outline: CGFloat = 1.2
+    /// Digits: start size and the width they must fit in.
+    private static let fontSize: CGFloat = 8.5
+    private static let maxTextWidth: CGFloat = 11.5
+    static let size = NSSize(width: body + 2 * pinLength + 1, height: 22)
 
     private let track = CALayer()
     private let fill = CALayer()
     private let text = CATextLayer()
     private let alert = CAShapeLayer()
+    private let pins = (0..<12).map { _ in CALayer() }
     private var level: Level?
+    private var shownText = ""
     private(set) var offline = false
 
     /// Green under 50 %, orange under 80 %, red above.
@@ -37,42 +44,52 @@ final class IconView: NSView {
         }
     }
 
+    private var box: CGRect {
+        CGRect(x: (Self.size.width - Self.body) / 2, y: (Self.size.height - Self.body) / 2,
+               width: Self.body, height: Self.body)
+    }
+
     override init(frame: NSRect) {
         super.init(frame: NSRect(origin: frame.origin, size: Self.size))
         wantsLayer = true
-        let box = CGRect(x: 0, y: (Self.size.height - Self.capsule.height) / 2,
-                         width: Self.capsule.width, height: Self.capsule.height)
+        let box = self.box
+
+        for (i, pin) in pins.enumerated() {
+            let offset = CGFloat(i % 3 - 1) * 4 - Self.pinWidth / 2
+            pin.frame = switch i / 3 {
+            case 0: CGRect(x: box.minX - Self.pinLength, y: box.midY + offset, width: Self.pinLength, height: Self.pinWidth)
+            case 1: CGRect(x: box.maxX, y: box.midY + offset, width: Self.pinLength, height: Self.pinWidth)
+            case 2: CGRect(x: box.midX + offset, y: box.maxY, width: Self.pinWidth, height: Self.pinLength)
+            default: CGRect(x: box.midX + offset, y: box.minY - Self.pinLength, width: Self.pinWidth, height: Self.pinLength)
+            }
+            layer?.addSublayer(pin)
+        }
+
         track.frame = box
-        track.cornerRadius = 4
+        track.cornerRadius = 2.5
         track.masksToBounds = true
-        // Drawn above the fill: keeps the capsule's edge visible on any
-        // wallpaper, whatever the load color.
-        track.borderWidth = 1
-        track.borderColor = NSColor.white.withAlphaComponent(0.85).cgColor
+        track.borderWidth = Self.outline
         fill.anchorPoint = .zero
         fill.frame = CGRect(x: 0, y: 0, width: box.width, height: 0)
         track.addSublayer(fill)
 
-        text.font = Self.font
-        text.fontSize = Self.font.pointSize
         text.alignmentMode = .center
         text.foregroundColor = NSColor.white.cgColor
-        let lineHeight = ceil(Self.font.ascender - Self.font.descender)
-        text.frame = CGRect(x: 0, y: (box.height - lineHeight) / 2, width: box.width, height: lineHeight)
         text.contentsScale = NSScreen.main?.backingScaleFactor ?? 2
         track.addSublayer(text)
         layer?.addSublayer(track)
 
-        // Red dashes over the white border: the white gaps keep them visible
-        // even on a red gauge.
+        // Red dashes over a white outline: the white gaps keep them visible
+        // even on a red chip.
         alert.frame = box
         alert.path = CGPath(roundedRect: CGRect(origin: .zero, size: box.size).insetBy(dx: 0.75, dy: 0.75),
-                            cornerWidth: 3.5, cornerHeight: 3.5, transform: nil)
+                            cornerWidth: 2, cornerHeight: 2, transform: nil)
         alert.fillColor = nil
         alert.lineWidth = 1.5
         alert.lineDashPattern = [2, 1.5]
         alert.isHidden = true
         layer?.addSublayer(alert)
+        applyInk()
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -82,6 +99,7 @@ final class IconView: NSView {
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
+        applyInk()
         level.map(applyColors)
     }
 
@@ -98,25 +116,58 @@ final class IconView: NSView {
         CATransaction.setDisableActions(true)
         alert.strokeColor = NSColor.systemRed.usingColorSpace(.sRGB)?.cgColor
         alert.isHidden = !on
+        applyInk()
         CATransaction.commit()
     }
 
     /// `value` is the CPU load from 0 to 1.
     func update(value: Double) {
         let v = min(1, max(0, value))
+        let number = Int((v * 100).rounded())
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        let number = Int((v * 100).rounded())
-        text.string = "\(number)"
-        let size = number >= 100 ? Self.smallFont.pointSize : Self.font.pointSize
-        if text.fontSize != size { text.fontSize = size }
-        fill.bounds.size.height = (Self.capsule.height * v).rounded()
+        setText("\(number)")
+        fill.bounds.size.height = (Self.body * v).rounded()
         // From the number shown, so "50" is never green.
         let newLevel = Level(Double(number) / 100)
         if newLevel != level {
             level = newLevel
             applyColors(newLevel)
         }
+        CATransaction.commit()
+    }
+
+    /// Calbar's digits: shrink by half points until the text fits, then
+    /// place the baseline so the digits center on their cap height rather
+    /// than on the line box.
+    private func setText(_ s: String) {
+        guard s != shownText else { return }
+        shownText = s
+        var size = Self.fontSize
+        var font = NSFont.monospacedDigitSystemFont(ofSize: size, weight: .bold)
+        while (s as NSString).size(withAttributes: [.font: font]).width > Self.maxTextWidth, size > 6 {
+            size -= 0.5
+            font = NSFont.monospacedDigitSystemFont(ofSize: size, weight: .bold)
+        }
+        text.font = font
+        text.fontSize = size
+        text.string = s
+        let height = ceil(font.ascender - font.descender)
+        let baseline = Self.body / 2 - font.capHeight / 2
+        text.frame = CGRect(x: 0, y: baseline + font.ascender - height, width: Self.body, height: height)
+    }
+
+    /// Pins and outline in the menu bar's ink; the outline turns white under
+    /// the alert's dashes.
+    private func applyInk() {
+        var ink = NSColor.labelColor.cgColor
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            ink = NSColor.labelColor.cgColor
+        }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        pins.forEach { $0.backgroundColor = ink }
+        track.borderColor = offline ? NSColor.white.cgColor : ink
         CATransaction.commit()
     }
 
@@ -129,7 +180,7 @@ final class IconView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         fill.backgroundColor = color
-        track.backgroundColor = color.copy(alpha: 0.45)
+        track.backgroundColor = color.copy(alpha: 0.35)
         CATransaction.commit()
     }
 }
