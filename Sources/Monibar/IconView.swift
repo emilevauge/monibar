@@ -9,13 +9,13 @@ import AppKit
 /// Built from CALayers, so an update only moves the fill edge and, when the
 /// number changes, swaps the text: no image is redrawn.
 final class IconView: NSView {
-    private static let body: CGFloat = 14
-    private static let pinLength: CGFloat = 2.2
+    private static let body: CGFloat = 16
+    private static let pinLength: CGFloat = 2
     private static let pinWidth: CGFloat = 1.2
     private static let outline: CGFloat = 1.2
     /// Digits: start size and the width they must fit in.
-    private static let fontSize: CGFloat = 8.5
-    private static let maxTextWidth: CGFloat = 11.5
+    private static let fontSize: CGFloat = 9.5
+    private static let maxTextWidth: CGFloat = 13.5
     static let size = NSSize(width: body + 2 * pinLength + 1, height: 22)
 
     private let track = CALayer()
@@ -55,7 +55,7 @@ final class IconView: NSView {
         let box = self.box
 
         for (i, pin) in pins.enumerated() {
-            let offset = CGFloat(i % 3 - 1) * 4 - Self.pinWidth / 2
+            let offset = CGFloat(i % 3 - 1) * 4.5 - Self.pinWidth / 2
             pin.frame = switch i / 3 {
             case 0: CGRect(x: box.minX - Self.pinLength, y: box.midY + offset, width: Self.pinLength, height: Self.pinWidth)
             case 1: CGRect(x: box.maxX, y: box.midY + offset, width: Self.pinLength, height: Self.pinWidth)
@@ -66,7 +66,7 @@ final class IconView: NSView {
         }
 
         track.frame = box
-        track.cornerRadius = 2.5
+        track.cornerRadius = 3
         track.masksToBounds = true
         track.borderWidth = Self.outline
         fill.anchorPoint = .zero
@@ -83,7 +83,7 @@ final class IconView: NSView {
         // even on a red chip.
         alert.frame = box
         alert.path = CGPath(roundedRect: CGRect(origin: .zero, size: box.size).insetBy(dx: 0.75, dy: 0.75),
-                            cornerWidth: 2, cornerHeight: 2, transform: nil)
+                            cornerWidth: 2.5, cornerHeight: 2.5, transform: nil)
         alert.fillColor = nil
         alert.lineWidth = 1.5
         alert.lineDashPattern = [2, 1.5]
