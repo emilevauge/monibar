@@ -253,6 +253,14 @@ final class PanelModel: ObservableObject {
 
     // MARK: Actions
 
+    /// Opens a web search on what the app or process is.
+    func searchWeb(_ row: ProcRow) {
+        let query = row.isApp ? "\(row.name) Mac app" : "\(row.name) macOS process"
+        var url = URLComponents(string: "https://www.google.com/search")!
+        url.queryItems = [URLQueryItem(name: "q", value: query)]
+        if let u = url.url { NSWorkspace.shared.open(u) }
+    }
+
     func kill(_ row: ProcRow, force: Bool) {
         var ok: Bool
         var reason = ""

@@ -29,6 +29,7 @@ Monibar then updates itself: when a new release is out, a notification offers to
 - **History**: graphs over 1 min, 15 min or 1 h.
 - **Top apps**: the 10 apps or processes using the most CPU or memory. Helper processes are grouped under their app (Chrome, Slack...). CPU is averaged over 10 s, 1 min, 1 h or 1 day, so the ranking stays steady.
 - **Quit apps**: click the cross, then confirm. Hold ⌥ while confirming to force quit (SIGKILL for a process).
+- **What is this?**: hover a row and click the magnifying glass, or right-click it, to search the web for the app or process.
 
 ## Resource use
 

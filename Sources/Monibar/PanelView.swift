@@ -168,9 +168,9 @@ struct PanelView: View {
                 ForEach(0..<PanelModel.rowCount, id: \.self) { i in
                     if i < model.rows.count {
                         let row = model.rows[i]
-                        ProcessRowView(row: row, sortByMemory: model.sortByMemory) { force in
-                            model.kill(row, force: force)
-                        }
+                        ProcessRowView(row: row, sortByMemory: model.sortByMemory,
+                                       onKill: { force in model.kill(row, force: force) },
+                                       onSearch: { model.searchWeb(row) })
                     } else {
                         Color.clear.frame(height: ProcessRowView.height)
                     }
@@ -354,6 +354,7 @@ struct ProcessRowView: View {
     let row: ProcRow
     let sortByMemory: Bool
     let onKill: (_ force: Bool) -> Void
+    let onSearch: () -> Void
 
     @State private var hover = false
     @State private var confirm = false
@@ -376,6 +377,17 @@ struct ProcessRowView: View {
             if row.count > 1 {
                 Text("\(row.count)").font(.caption).foregroundStyle(.tertiary)
             }
+            if hover {
+                Button(action: onSearch) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 16, height: 16)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Rechercher sur le web de quoi il s'agit")
+            }
             Spacer(minLength: 4)
             Text(Format.cpu(row.cpu))
                 .frame(width: 46, alignment: .trailing)
@@ -397,6 +409,12 @@ struct ProcessRowView: View {
             }
         }
         .contentShape(Rectangle())
+        .contextMenu {
+            Button("Rechercher « \(row.name) » sur le web", action: onSearch)
+            Divider()
+            Button(row.isApp ? "Quitter" : "Terminer (SIGTERM)") { onKill(false) }
+            Button(row.isApp ? "Forcer à quitter" : "Tuer (SIGKILL)") { onKill(true) }
+        }
         .onHover { h in
             hover = h
             if !h { withAnimation(Motion.resize) { confirm = false } }
