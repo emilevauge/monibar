@@ -8,7 +8,7 @@ import SwiftUI
 final class StatusController: NSResponder {
     private static let hoverDelay: TimeInterval = 0.5
 
-    private let item = NSStatusBar.system.statusItem(withLength: IconView.size.width + 6)
+    private let item = NSStatusBar.system.statusItem(withLength: IconView.size.width + 4)
     private let icon = IconView(frame: .zero)
     private let popover = NSPopover()
     private let model: PanelModel
@@ -36,7 +36,7 @@ final class StatusController: NSResponder {
         button.target = self
         button.action = #selector(clicked)
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
-        icon.frame.origin = NSPoint(x: 3, y: (button.bounds.height - IconView.size.height) / 2)
+        icon.frame.origin = NSPoint(x: 2, y: (button.bounds.height - IconView.size.height) / 2)
         icon.autoresizingMask = [.minYMargin, .maxYMargin]
         button.addSubview(icon)
         button.addTrackingArea(NSTrackingArea(rect: .zero,

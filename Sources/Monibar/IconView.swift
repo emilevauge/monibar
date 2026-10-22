@@ -1,12 +1,12 @@
 import AppKit
 
 /// Menu bar capsule: a track tinted with the load color, filled from the left
-/// in proportion to CPU, the number in white on top. Built from CALayers, so
+/// in proportion to CPU, the number in white on top, a thin white border. Built from CALayers, so
 /// an update only moves the fill edge and, when the number changes, swaps
 /// the text: no image is redrawn.
 final class IconView: NSView {
-    static let font = NSFont.monospacedDigitSystemFont(ofSize: 10.5, weight: .semibold)
-    static let capsule = NSSize(width: 24, height: 14)
+    static let font = NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .semibold)
+    static let capsule = NSSize(width: 21, height: 14)
     static let size = NSSize(width: capsule.width, height: 22)
 
     private let track = CALayer()
@@ -39,6 +39,10 @@ final class IconView: NSView {
         track.frame = box
         track.cornerRadius = 4
         track.masksToBounds = true
+        // Drawn above the fill: keeps the capsule's edge visible on any
+        // wallpaper, whatever the load color.
+        track.borderWidth = 1
+        track.borderColor = NSColor.white.withAlphaComponent(0.85).cgColor
         fill.anchorPoint = .zero
         fill.frame = CGRect(x: 0, y: 0, width: 0, height: box.height)
         track.addSublayer(fill)
