@@ -76,6 +76,7 @@ final class PanelModel: ObservableObject {
     @Published private(set) var rows: [ProcRow] = []
     @Published private(set) var hiddenProcs = 0
     @Published var message: String?
+    @Published private(set) var internet = Connectivity.State.unknown
     /// A newer release, offered in the settings menu.
     @Published private(set) var update: GitHubRelease?
 
@@ -104,6 +105,7 @@ final class PanelModel: ObservableObject {
 
     private let sampler: SystemSampler
     private let procSampler = ProcessSampler()
+    private let connectivity = Connectivity()
     private var lastProcs: [ProcSample] = []
     private var appCache: [pid_t: (name: String, icon: NSImage)?] = [:]
     private var messageTimer: Timer?
@@ -124,6 +126,8 @@ final class PanelModel: ObservableObject {
     func setVisible(_ v: Bool) {
         visible = v
         if v {
+            connectivity.onChange = { [weak self] in self?.internet = $0 }
+            connectivity.start()
             update = UpdateChecker.available
             sampler.sampleOthers()
             refreshSystem()
@@ -138,6 +142,7 @@ final class PanelModel: ObservableObject {
                 self.refreshProcesses()
             }
         } else {
+            connectivity.stop()
             procSampler.panelClosed()
             lastProcs = []
             appCache.removeAll()

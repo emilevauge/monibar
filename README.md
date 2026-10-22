@@ -25,6 +25,7 @@ Monibar then updates itself: when a new release is out, a notification offers to
 - **CPU**: user, system and GPU load, and a history graph.
 - **Memory**: used out of total, split into app, wired and compressed memory, and swap.
 - **Network and disk**: read and write rates with mirrored graphs, free disk space.
+- **Internet access**: online, no Internet access (a network but no route out, or a captive portal) or offline, beside the network title. Checked while the panel is open only: when it opens, on each network change and every 30 s, with the request macOS uses to detect captive portals.
 - **History**: graphs over 1 min, 15 min or 1 h.
 - **Top apps**: the 10 apps or processes using the most CPU or memory. Helper processes are grouped under their app (Chrome, Slack...). CPU is averaged over 10 s, 1 min, 1 h or 1 day, so the ranking stays steady.
 - **Quit apps**: click the cross, then confirm. Hold ⌥ while confirming to force quit (SIGKILL for a process).

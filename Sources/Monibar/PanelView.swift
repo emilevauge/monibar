@@ -13,7 +13,8 @@ struct PanelView: View {
             Divider()
             ioSection(title: "Réseau", rates: (model.netIn, model.netOut),
                       layers: [GraphLayer(series: model.hNetIn, color: .green),
-                               GraphLayer(series: model.hNetOut, color: .orange)])
+                               GraphLayer(series: model.hNetOut, color: .orange)],
+                      status: internetStatus)
             Divider()
             HStack(alignment: .top, spacing: 0) {
                 memorySection
@@ -96,11 +97,35 @@ struct PanelView: View {
 
     // MARK: Network, disk
 
+    /// Internet reachability, shown beside the network title.
+    private var internetStatus: (color: Color, text: String)? {
+        switch model.internet {
+        case .online: (.green, "En ligne")
+        case .noInternet: (.orange, "Pas d'accès Internet")
+        case .offline: (.red, "Hors ligne")
+        case .unknown: nil
+        }
+    }
+
     /// `stacked`: one rate per line, for the half-width disk section.
+    /// `status`: a colored state at the right of the title.
     private func ioSection(title: String, rates: (down: Double, up: Double), layers: [GraphLayer],
-                           stacked: Bool = false, footer: String? = nil) -> some View {
+                           stacked: Bool = false, footer: String? = nil,
+                           status: (color: Color, text: String)? = nil) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title).font(.system(size: 13, weight: .semibold))
+            HStack(alignment: .firstTextBaseline) {
+                Text(title).font(.system(size: 13, weight: .semibold))
+                Spacer()
+                if let status {
+                    HStack(spacing: 4) {
+                        Circle().fill(status.color).frame(width: 7, height: 7)
+                        Text(status.text)
+                    }
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(status.color)
+                    .help("Testé à l'ouverture du panel, à chaque changement de réseau et toutes les 30 s")
+                }
+            }
             let legends = Group {
                 Legend(color: layers[0].color, text: "↓ \(Format.rate(rates.down))")
                 Legend(color: layers[1].color, text: "↑ \(Format.rate(rates.up))")
