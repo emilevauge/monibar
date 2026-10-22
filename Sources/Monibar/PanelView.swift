@@ -14,7 +14,7 @@ struct PanelView: View {
             ioSection(title: "Réseau", rates: (model.netIn, model.netOut),
                       layers: [GraphLayer(series: model.hNetIn, color: .green),
                                GraphLayer(series: model.hNetOut, color: .orange)],
-                      status: internetStatus)
+                      status: internetStatus, outages: model.hInternet)
             Divider()
             HStack(alignment: .top, spacing: 0) {
                 memorySection
@@ -111,7 +111,7 @@ struct PanelView: View {
     /// `status`: a colored state at the right of the title.
     private func ioSection(title: String, rates: (down: Double, up: Double), layers: [GraphLayer],
                            stacked: Bool = false, footer: String? = nil,
-                           status: (color: Color, text: String)? = nil) -> some View {
+                           status: (color: Color, text: String)? = nil, outages: Series? = nil) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
                 Text(title).font(.system(size: 13, weight: .semibold))
@@ -123,7 +123,7 @@ struct PanelView: View {
                     }
                     .font(.caption.weight(.medium))
                     .foregroundStyle(status.color)
-                    .help("Testé à l'ouverture du panel, à chaque changement de réseau et toutes les 30 s")
+                    .help("Testé toutes les minutes, à chaque changement de réseau et à l'ouverture du panel")
                 }
             }
             let legends = Group {
@@ -135,7 +135,9 @@ struct PanelView: View {
             } else {
                 HStack(spacing: 10) { legends }
             }
-            Graph(layers: layers, minScale: 16 * 1024, mirrored: true, height: stacked ? 32 : 40)
+            Graph(layers: layers, minScale: 16 * 1024, mirrored: true, outages: outages,
+                  height: stacked ? 32 : 40)
+                .help(outages == nil ? "" : "Fond orange : sans accès Internet. Fond rouge : hors ligne.")
             if let footer {
                 Text(footer).font(.caption).foregroundStyle(.secondary)
             }

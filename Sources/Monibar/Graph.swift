@@ -14,10 +14,14 @@ struct Graph: View {
     var minScale: Float = 0
     /// Draws the second layer downward from the middle line (network, disk).
     var mirrored = false
+    /// Internet access over time (1 online, 0.5 no access, 0 offline): tints
+    /// the background orange or red behind the buckets that were not online.
+    var outages: Series?
     var height: CGFloat = 44
 
     var body: some View {
         Canvas { ctx, size in
+            if let outages { drawOutages(outages.values, in: &ctx, size: size) }
             let top = scaleTop()
             if mirrored, layers.count == 2 {
                 let mid = size.height / 2
@@ -36,6 +40,18 @@ struct Graph: View {
         .frame(height: height)
         .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 6))
         .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    private func drawOutages(_ values: [Float?], in ctx: inout GraphicsContext, size: CGSize) {
+        guard !values.isEmpty else { return }
+        let step = size.width / CGFloat(values.count)
+        for (i, v) in values.enumerated() {
+            guard let v, v < 1 else { continue }
+            let color: Color = v >= 0.5 ? .orange : .red
+            // Overlap by half a point so adjacent buckets join.
+            let rect = CGRect(x: CGFloat(i) * step, y: 0, width: step + 0.5, height: size.height)
+            ctx.fill(Path(rect), with: .color(color.opacity(0.3)))
+        }
     }
 
     private func scaleTop() -> Float {

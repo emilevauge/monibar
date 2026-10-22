@@ -25,14 +25,14 @@ Monibar then updates itself: when a new release is out, a notification offers to
 - **CPU**: user, system and GPU load, and a history graph.
 - **Memory**: used out of total, split into app, wired and compressed memory, and swap.
 - **Network and disk**: read and write rates with mirrored graphs, free disk space.
-- **Internet access**: online, no Internet access (a network but no route out, or a captive portal) or offline, beside the network title. Checked while the panel is open only: when it opens, on each network change and every 30 s, with the request macOS uses to detect captive portals.
+- **Internet access**: online, no Internet access (a network but no route out, or a captive portal) or offline, beside the network title. Its history tints the network graph: orange where there was no Internet access, red where the Mac was offline. Checked once a minute, on each network change and when the panel opens, with the request macOS uses to detect captive portals.
 - **History**: graphs over 1 min, 15 min or 1 h.
 - **Top apps**: the 10 apps or processes using the most CPU or memory. Helper processes are grouped under their app (Chrome, Slack...). CPU is averaged over 10 s, 1 min, 1 h or 1 day, so the ranking stays steady.
 - **Quit apps**: click the cross, then confirm. Hold ⌥ while confirming to force quit (SIGKILL for a process).
 
 ## Resource use
 
-With the panel closed, Monibar reads the total CPU load once every 2 s (one Mach call) for the icon. Once a minute, it reads memory, network, disk and GPU for the graphs, and takes a snapshot of each process's CPU counters (about 1 ms) for the 1 h and 1 day averages. Measured: about 0.03 % of one core and 32 MB of memory. While the panel is open, everything is read every 2 s, and its views are freed when it closes.
+With the panel closed, Monibar reads the total CPU load once every 2 s (one Mach call) for the icon. Once a minute, it reads memory, network, disk and GPU for the graphs, checks Internet access (one small HTTPS request), and takes a snapshot of each process's CPU counters (about 1 ms) for the 1 h and 1 day averages. Measured: about 0.03 % of one core and 32 MB of memory. While the panel is open, everything is read every 2 s, and its views are freed when it closes.
 
 Network, disk and CPU come from counters the kernel cumulates since boot: a point taken once a minute is the exact average of that minute, nothing is lost between points. Memory and GPU are readings, so a spike shorter than a minute can fall between two points while the panel is closed.
 

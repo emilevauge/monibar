@@ -53,13 +53,15 @@ struct TimeSeries {
     /// The last `window` seconds before `now` cut into `count` buckets,
     /// oldest first: the mean of each bucket weighted by the time each point
     /// covers in it, nil where nothing was measured (Mac asleep, app not
-    /// running).
-    func buckets(window: Double, count: Int, now: Double) -> [Float?] {
+    /// running). `lowest`: the lowest value in each bucket instead of the
+    /// mean, so a short outage still shows.
+    func buckets(window: Double, count: Int, now: Double, lowest: Bool = false) -> [Float?] {
         guard count > 0, window > 0 else { return [] }
         let from = now - window
         let width = window / Double(count)
         var sums = [Double](repeating: 0, count: count)
         var weights = [Double](repeating: 0, count: count)
+        var mins = [Float](repeating: .infinity, count: count)
 
         // First point ending after `from`: points are in time order.
         var lo = 0, hi = ends.count
@@ -77,11 +79,14 @@ struct TimeSeries {
                 if overlap > 0 {
                     sums[b] += Double(values[i]) * overlap
                     weights[b] += overlap
+                    mins[b] = min(mins[b], values[i])
                 }
                 if be >= e { break }
                 b += 1
             }
         }
-        return (0..<count).map { weights[$0] > 0 ? Float(sums[$0] / weights[$0]) : nil }
+        return (0..<count).map {
+            weights[$0] > 0 ? (lowest ? mins[$0] : Float(sums[$0] / weights[$0])) : nil
+        }
     }
 }

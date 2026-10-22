@@ -70,6 +70,7 @@ final class PanelModel: ObservableObject {
     @Published private(set) var hMem = Series()
     @Published private(set) var hNetIn = Series()
     @Published private(set) var hNetOut = Series()
+    @Published private(set) var hInternet = Series()
     @Published private(set) var hDiskR = Series()
     @Published private(set) var hDiskW = Series()
 
@@ -121,13 +122,15 @@ final class PanelModel: ObservableObject {
         let window = d.object(forKey: "procWindow") as? Int
         procWindow = ProcWindow.options.contains { $0.0 == window } ? window! : 10
         launchAtLogin = SMAppService.mainApp.status == .enabled
+        connectivity.onChange = { [weak self] in self?.internet = $0 }
+        connectivity.start()
     }
 
     func setVisible(_ v: Bool) {
         visible = v
         if v {
-            connectivity.onChange = { [weak self] in self?.internet = $0 }
-            connectivity.start()
+            internet = connectivity.state
+            connectivity.probe()
             update = UpdateChecker.available
             sampler.sampleOthers()
             refreshSystem()
@@ -142,7 +145,6 @@ final class PanelModel: ObservableObject {
                 self.refreshProcesses()
             }
         } else {
-            connectivity.stop()
             procSampler.panelClosed()
             lastProcs = []
             appCache.removeAll()
@@ -153,6 +155,7 @@ final class PanelModel: ObservableObject {
     /// list, and the history of the graphs while the panel is closed.
     func minuteTick() {
         procSampler.takeSnapshot()
+        connectivity.probe()
         // While open, the panel samples every tick already.
         if !visible { sampler.sampleOthers() }
     }
@@ -190,6 +193,8 @@ final class PanelModel: ObservableObject {
         hMem = s(sampler.hMem)
         hNetIn = s(sampler.hNetIn)
         hNetOut = s(sampler.hNetOut)
+        hInternet = Series(values: connectivity.history.buckets(window: range.seconds, count: Self.graphPoints,
+                                                                 now: now, lowest: true))
         hDiskR = s(sampler.hDiskR)
         hDiskW = s(sampler.hDiskW)
     }

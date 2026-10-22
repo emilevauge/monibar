@@ -4,7 +4,8 @@ import Network
 /// Whether the Mac reaches the Internet. NWPathMonitor only tells that a
 /// route exists, which stays true behind a dead box or a captive portal, so
 /// a path that looks up is confirmed by the request macOS itself uses to
-/// detect captive portals. Runs only while the panel is open.
+/// detect captive portals: once a minute, on each network change, and when
+/// the panel opens.
 @MainActor
 final class Connectivity {
     enum State {
@@ -12,7 +13,6 @@ final class Connectivity {
     }
 
     private static let probeURL = URL(string: "https://captive.apple.com/hotspot-detect.html")!
-    private static let probeInterval: TimeInterval = 30
     private static let session = URLSession(configuration: .ephemeral)
 
     private(set) var state = State.unknown {
@@ -20,8 +20,12 @@ final class Connectivity {
     }
     var onChange: ((State) -> Void)?
 
+    /// 1 online, 0.5 no Internet access, 0 offline; each point covers the
+    /// time since the previous check.
+    private(set) var history = TimeSeries()
+    private var lastRecord: Double = 0
+
     private var monitor: NWPathMonitor?
-    private var timer: Timer?
     private var pathUp = false
     private var probing = false
 
@@ -33,25 +37,30 @@ final class Connectivity {
         }
         monitor.start(queue: .main)
         self.monitor = monitor
-        timer = Timer.scheduledTimer(withTimeInterval: Self.probeInterval, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.probe() }
-        }
-    }
-
-    func stop() {
-        monitor?.cancel()
-        monitor = nil
-        timer?.invalidate()
-        timer = nil
     }
 
     private func pathChanged(up: Bool) {
         pathUp = up
-        if up { probe() } else { state = .offline }
+        if up { probe() } else { set(.offline) }
     }
 
-    private func probe() {
-        guard pathUp, !probing else { return }
+    private func set(_ new: State) {
+        state = new
+        let value: Float = switch new {
+        case .online: 1
+        case .noInternet: 0.5
+        case .offline, .unknown: 0
+        }
+        // Checks more than 2.5 min apart span a sleep: left as a gap.
+        let now = Date().timeIntervalSinceReferenceDate
+        if lastRecord > 0, now - lastRecord <= 150 { history.add(value, from: lastRecord, to: now) }
+        lastRecord = now
+    }
+
+    /// Called once a minute and when the panel opens.
+    func probe() {
+        guard pathUp else { return set(.offline) }
+        guard !probing else { return }
         probing = true
         let request = URLRequest(url: Self.probeURL, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData,
                                  timeoutInterval: 5)
@@ -63,7 +72,7 @@ final class Connectivity {
                 reached = String(decoding: data, as: UTF8.self).contains("Success")
             }
             probing = false
-            if pathUp { state = reached ? .online : .noInternet }
+            if pathUp { set(reached ? .online : .noInternet) }
         }
     }
 }
