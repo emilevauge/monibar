@@ -60,7 +60,6 @@ struct PanelView: View {
                            GraphLayer(series: model.hUser, color: .blue),
                            GraphLayer(series: model.hGPU, color: .purple, fill: false)],
                   maxValue: 1)
-            CoreBars(cores: model.cores)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)

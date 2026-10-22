@@ -55,7 +55,6 @@ final class PanelModel: ObservableObject {
 
     @Published private(set) var cpuUser = 0.0
     @Published private(set) var cpuSys = 0.0
-    @Published private(set) var cores: [Double] = []
     @Published private(set) var gpu: Double?
     @Published private(set) var mem = MemInfo()
     @Published private(set) var netIn = 0.0
@@ -126,14 +125,14 @@ final class PanelModel: ObservableObject {
         visible = v
         if v {
             update = UpdateChecker.available
-            sampler.sampleOthers(withCores: true)
+            sampler.sampleOthers()
             refreshSystem()
             refreshHistory()
             lastProcs = procSampler.sample(window: TimeInterval(procWindow))
             rebuildRows()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
                 guard let self, self.visible else { return }
-                self.sampler.sampleOthers(withCores: true)
+                self.sampler.sampleOthers()
                 self.refreshSystem()
                 self.refreshHistory()
                 self.refreshProcesses()
@@ -150,13 +149,13 @@ final class PanelModel: ObservableObject {
     func minuteTick() {
         procSampler.takeSnapshot()
         // While open, the panel samples every tick already.
-        if !visible { sampler.sampleOthers(withCores: false) }
+        if !visible { sampler.sampleOthers() }
     }
 
     /// Called after each sampler tick.
     func tick() {
         guard visible else { return }
-        sampler.sampleOthers(withCores: true)
+        sampler.sampleOthers()
         refreshSystem()
         refreshHistory()
         refreshProcesses()
@@ -165,7 +164,6 @@ final class PanelModel: ObservableObject {
     private func refreshSystem() {
         cpuUser = sampler.cpuUser
         cpuSys = sampler.cpuSys
-        cores = sampler.cores
         gpu = sampler.gpu
         mem = sampler.mem
         netIn = sampler.netIn

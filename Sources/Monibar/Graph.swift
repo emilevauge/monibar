@@ -100,26 +100,3 @@ struct SegmentBar: View {
         .clipShape(Capsule())
     }
 }
-
-/// One thin vertical bar per core.
-struct CoreBars: View {
-    let cores: [Double]
-
-    var body: some View {
-        HStack(alignment: .bottom, spacing: 2) {
-            ForEach(cores.indices, id: \.self) { i in
-                GeometryReader { geo in
-                    VStack(spacing: 0) {
-                        Spacer(minLength: 0)
-                        Rectangle()
-                            .fill(Color.blue)
-                            .frame(height: max(1, geo.size.height * cores[i]))
-                    }
-                }
-                .background(.quaternary.opacity(0.5))
-                .clipShape(RoundedRectangle(cornerRadius: 1.5))
-            }
-        }
-        .frame(height: 16)
-    }
-}

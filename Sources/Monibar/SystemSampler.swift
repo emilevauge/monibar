@@ -31,7 +31,6 @@ final class SystemSampler {
     private static let maxGap: Double = 150
 
     private let host = mach_host_self()
-    private var prevTicks: [UInt32] = []
     private var prevTotalTicks: [UInt32] = []
     private var prevCPUTime: Double = 0
     private var prevNet: (rx: UInt64, tx: UInt64)?
@@ -43,7 +42,6 @@ final class SystemSampler {
     private var gpuService: io_service_t = 0
     private var samples = 0
 
-    private(set) var cores: [Double] = []
     private(set) var cpuUser = 0.0
     private(set) var cpuSys = 0.0
     private(set) var mem = MemInfo()
@@ -97,16 +95,15 @@ final class SystemSampler {
         hCPU.add(Float(cpuTotal), from: since, to: now)
     }
 
-    /// Memory, network, disk and GPU; per-core CPU too while the panel is
-    /// open. Called every tick with the panel open, once a minute otherwise.
-    func sampleOthers(withCores: Bool) {
+    /// Memory, network, disk and GPU. Called every tick with the panel open,
+    /// once a minute otherwise.
+    func sampleOthers() {
         let now = Self.now
         let dt = prevTime > 0 ? now - prevTime : 0
         let since = prevTime
         prevTime = now
         let record = dt > 0 && dt <= Self.maxGap
 
-        if withCores { sampleCores() } else { prevTicks = [] }
         sampleMemory()
 
         let net = readNet()
@@ -134,40 +131,6 @@ final class SystemSampler {
         hDiskR.add(Float(diskRead), from: since, to: now)
         hDiskW.add(Float(diskWrite), from: since, to: now)
         if let gpu { hGPU.add(Float(gpu), from: since, to: now) }
-    }
-
-    // MARK: CPU
-
-    private func sampleCores() {
-        var count: natural_t = 0
-        var info: processor_info_array_t?
-        var infoCount: mach_msg_type_number_t = 0
-        guard host_processor_info(host, PROCESSOR_CPU_LOAD_INFO, &count, &info, &infoCount) == KERN_SUCCESS,
-              let info else { return }
-        defer {
-            vm_deallocate(mach_task_self_, vm_address_t(UInt(bitPattern: info)),
-                          vm_size_t(Int(infoCount) * MemoryLayout<integer_t>.stride))
-        }
-
-        let n = Int(count)
-        let stride = Int(CPU_STATE_MAX)
-        var cur = [UInt32](repeating: 0, count: n * stride)
-        for i in 0..<n * stride { cur[i] = UInt32(bitPattern: info[i]) }
-        defer { prevTicks = cur }
-        guard prevTicks.count == cur.count else { return }
-
-        var newCores = [Double](repeating: 0, count: n)
-        for c in 0..<n {
-            let b = c * stride
-            // 32-bit tick counters wrap, wrapping subtraction keeps deltas right.
-            let user = UInt64(cur[b + Int(CPU_STATE_USER)] &- prevTicks[b + Int(CPU_STATE_USER)])
-            let nice = UInt64(cur[b + Int(CPU_STATE_NICE)] &- prevTicks[b + Int(CPU_STATE_NICE)])
-            let sys = UInt64(cur[b + Int(CPU_STATE_SYSTEM)] &- prevTicks[b + Int(CPU_STATE_SYSTEM)])
-            let idle = UInt64(cur[b + Int(CPU_STATE_IDLE)] &- prevTicks[b + Int(CPU_STATE_IDLE)])
-            let all = user + nice + sys + idle
-            newCores[c] = all > 0 ? Double(user + nice + sys) / Double(all) : 0
-        }
-        cores = newCores
     }
 
     // MARK: Memory
