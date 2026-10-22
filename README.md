@@ -20,7 +20,7 @@ Monibar then updates itself: when a new release is out, a notification offers to
 
 ## Features
 
-- **CPU chip**: the menu bar icon is a small CPU chip whose body fills from the bottom with the load, green under 50 %, orange under 80 %, red above, with the number on top in Calbar's digits. The number is averaged over a window set in the settings menu (2 s to 60 s). When the Mac is offline or has no Internet access, the chip's outline turns to red dashes.
+- **CPU chip**: the menu bar icon is a small CPU chip, drawn with Calbar's stroke, whose body fills from the bottom with the load: green under 50 %, orange under 80 %, red above. The load is averaged over a window set in the settings menu (2 s to 60 s). When the Mac is offline or has no Internet access, a crossed-out Wi-Fi shows in the chip.
 - **Hover panel**: resting the pointer on the capsule opens the panel, which closes when the pointer leaves it. A click keeps it open until a click outside or Escape. Same behavior and layout as [Calbar](https://github.com/emilevauge/calbar).
 - **CPU**: user, system and GPU load, and a history graph.
 - **Memory**: used out of total, split into app, wired and compressed memory, and swap.

@@ -51,7 +51,7 @@ final class StatusController: NSResponder {
 
     // MARK: Icon
 
-    /// No Internet, offline or not: red dashes around the gauge.
+    /// No Internet, offline or not: a crossed-out Wi-Fi in the chip.
     func setOffline(_ on: Bool) {
         guard on != icon.offline else { return }
         icon.setOffline(on)

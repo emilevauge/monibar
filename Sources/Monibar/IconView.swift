@@ -1,30 +1,26 @@
 import AppKit
 
 /// Menu bar icon: a CPU chip whose body fills from the bottom with the load,
-/// green under 50 %, orange under 80 %, red above, three pins on each side
-/// and the number in white on top. The digits are Calbar's: monospaced bold,
-/// shrunk until they fit, centered on their cap height. Without Internet, the
-/// body's outline turns to red dashes over white.
+/// green under 50 %, orange under 80 %, red above, three pins on each side.
+/// No number: the fill and its color tell the load. Without Internet, a
+/// crossed-out Wi-Fi shows in the middle of the chip.
 ///
-/// Built from CALayers, so an update only moves the fill edge and, when the
-/// number changes, swaps the text: no image is redrawn.
+/// Built from CALayers, so an update only moves the fill edge: no image is
+/// redrawn.
 final class IconView: NSView {
     private static let body: CGFloat = 16
     private static let pinLength: CGFloat = 2
-    private static let pinWidth: CGFloat = 1.2
-    private static let outline: CGFloat = 1.2
-    /// Digits: start size and the width they must fit in.
-    private static let fontSize: CGFloat = 9.5
-    private static let maxTextWidth: CGFloat = 13.5
+    /// Same stroke as Calbar's calendar page, so both icons match.
+    private static let pinWidth: CGFloat = 1.3
+    private static let outline: CGFloat = 1.3
     static let size = NSSize(width: body + 2 * pinLength + 1, height: 22)
 
     private let track = CALayer()
     private let fill = CALayer()
-    private let text = CATextLayer()
-    private let alert = CAShapeLayer()
+    private let alert = CALayer()
     private let pins = (0..<12).map { _ in CALayer() }
     private var level: Level?
-    private var shownText = ""
+    private var shownHeight: CGFloat = -1
     private(set) var offline = false
 
     /// Green under 50 %, orange under 80 %, red above.
@@ -66,27 +62,17 @@ final class IconView: NSView {
         }
 
         track.frame = box
-        track.cornerRadius = 3
+        track.cornerRadius = 3.2
         track.masksToBounds = true
         track.borderWidth = Self.outline
         fill.anchorPoint = .zero
         fill.frame = CGRect(x: 0, y: 0, width: box.width, height: 0)
         track.addSublayer(fill)
 
-        text.alignmentMode = .center
-        text.foregroundColor = NSColor.white.cgColor
-        text.contentsScale = NSScreen.main?.backingScaleFactor ?? 2
-        track.addSublayer(text)
         layer?.addSublayer(track)
 
-        // Red dashes over a white outline: the white gaps keep them visible
-        // even on a red chip.
         alert.frame = box
-        alert.path = CGPath(roundedRect: CGRect(origin: .zero, size: box.size).insetBy(dx: 0.75, dy: 0.75),
-                            cornerWidth: 2.5, cornerHeight: 2.5, transform: nil)
-        alert.fillColor = nil
-        alert.lineWidth = 1.5
-        alert.lineDashPattern = [2, 1.5]
+        alert.contentsGravity = .center
         alert.isHidden = true
         layer?.addSublayer(alert)
         applyInk()
@@ -105,7 +91,7 @@ final class IconView: NSView {
 
     override func viewDidChangeBackingProperties() {
         super.viewDidChangeBackingProperties()
-        text.contentsScale = window?.backingScaleFactor ?? 2
+        if offline { renderAlert() }
     }
 
     /// Shows or hides the no-Internet alert.
@@ -114,22 +100,37 @@ final class IconView: NSView {
         offline = on
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        alert.strokeColor = NSColor.systemRed.usingColorSpace(.sRGB)?.cgColor
+        if on { renderAlert() }
         alert.isHidden = !on
-        applyInk()
         CATransaction.commit()
+    }
+
+    /// White crossed-out Wi-Fi, rendered once per alert at the screen's
+    /// scale. Bold, so it holds over the colored fill.
+    private func renderAlert() {
+        let config = NSImage.SymbolConfiguration(pointSize: 9.5, weight: .heavy)
+            .applying(.init(paletteColors: [.white]))
+        guard let image = NSImage(systemSymbolName: "wifi.slash", accessibilityDescription: nil)?
+            .withSymbolConfiguration(config) else { return }
+        let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
+        var rect = NSRect(origin: .zero, size: image.size)
+        alert.contents = image.cgImage(forProposedRect: &rect, context: nil,
+                                       hints: [.ctm: AffineTransform(scale: scale)])
+        alert.contentsScale = scale
     }
 
     /// `value` is the CPU load from 0 to 1.
     func update(value: Double) {
         let v = min(1, max(0, value))
         let number = Int((v * 100).rounded())
+        let height = (Self.body * v).rounded()
+        // From the rounded number, so 50 % is never green.
+        let newLevel = Level(Double(number) / 100)
+        guard height != shownHeight || newLevel != level else { return }
+        shownHeight = height
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        setText("\(number)")
-        fill.bounds.size.height = (Self.body * v).rounded()
-        // From the number shown, so "50" is never green.
-        let newLevel = Level(Double(number) / 100)
+        fill.bounds.size.height = height
         if newLevel != level {
             level = newLevel
             applyColors(newLevel)
@@ -137,28 +138,7 @@ final class IconView: NSView {
         CATransaction.commit()
     }
 
-    /// Calbar's digits: shrink by half points until the text fits, then
-    /// place the baseline so the digits center on their cap height rather
-    /// than on the line box.
-    private func setText(_ s: String) {
-        guard s != shownText else { return }
-        shownText = s
-        var size = Self.fontSize
-        var font = NSFont.monospacedDigitSystemFont(ofSize: size, weight: .bold)
-        while (s as NSString).size(withAttributes: [.font: font]).width > Self.maxTextWidth, size > 6 {
-            size -= 0.5
-            font = NSFont.monospacedDigitSystemFont(ofSize: size, weight: .bold)
-        }
-        text.font = font
-        text.fontSize = size
-        text.string = s
-        let height = ceil(font.ascender - font.descender)
-        let baseline = Self.body / 2 - font.capHeight / 2
-        text.frame = CGRect(x: 0, y: baseline + font.ascender - height, width: Self.body, height: height)
-    }
-
-    /// Pins and outline in the menu bar's ink; the outline turns white under
-    /// the alert's dashes.
+    /// Pins and outline in the menu bar's ink.
     private func applyInk() {
         var ink = NSColor.labelColor.cgColor
         effectiveAppearance.performAsCurrentDrawingAppearance {
@@ -167,7 +147,7 @@ final class IconView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         pins.forEach { $0.backgroundColor = ink }
-        track.borderColor = offline ? NSColor.white.cgColor : ink
+        track.borderColor = ink
         CATransaction.commit()
     }
 
