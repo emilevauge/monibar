@@ -8,7 +8,6 @@ private func responsiblePid(_ pid: pid_t) -> pid_t
 
 struct ProcSample {
     let pid: pid_t
-    let name: String
     /// Percent of one core, can exceed 100 like in Activity Monitor.
     let cpu: Double
     let mem: UInt64
@@ -24,6 +23,21 @@ private struct Snapshot {
     var starts: [UInt64] = []
     var cpus: [UInt64] = []
 
+    /// A copy sized to its content: the scan reserves room for unreadable
+    /// processes too, about a third more.
+    func compacted() -> Snapshot {
+        Snapshot(at: at, pids: Self.exact(pids), starts: Self.exact(starts), cpus: Self.exact(cpus))
+    }
+
+    /// A copy with capacity equal to its count. `Array(a[...])` may share
+    /// the original, oversized buffer.
+    private static func exact<T>(_ a: [T]) -> [T] {
+        [T](unsafeUninitializedCapacity: a.count) { buffer, count in
+            _ = buffer.initialize(from: a)
+            count = a.count
+        }
+    }
+
     func index(of pid: pid_t) -> Int? {
         var lo = 0, hi = pids.count
         while lo < hi {
@@ -35,8 +49,9 @@ private struct Snapshot {
 }
 
 /// Per-process CPU and memory. With the panel closed, only a snapshot of CPU
-/// counters is taken once a minute (about 1 ms), kept 1 h at that pace and
-/// 24 h at one per 15 min, so the list can average over up to a day.
+/// counters is taken once a minute (about 1 ms). Snapshots are kept 10 min
+/// at that pace, 1 h at one per 5 min and 24 h at one per 15 min, so the
+/// list can average over up to a day; about 120 snapshots of ~10 KB.
 /// Processes owned by other users (root daemons) are not readable without
 /// privileges and are skipped.
 final class ProcessSampler {
@@ -44,13 +59,15 @@ final class ProcessSampler {
 
     private struct Meta {
         var start: UInt64
-        var name: String
+        /// Looked up only for the rows shown, see `name(of:)`.
+        var name: String?
         var responsible: pid_t
     }
 
     /// Panel ticks, kept a little over the shortest window.
     private var recent: [Snapshot] = []
     private var minutes: [Snapshot] = []
+    private var fives: [Snapshot] = []
     private var quarters: [Snapshot] = []
     private var meta: [pid_t: Meta] = [:]
     private var pids = [pid_t](repeating: 0, count: 2048)
@@ -64,13 +81,15 @@ final class ProcessSampler {
 
     /// Called once a minute, panel open or not.
     func takeSnapshot() {
-        let snap = scan(withMemory: false).snapshot
-        minutes.append(snap)
-        if minutes.count > 61 { minutes.removeFirst() }
-        if quarters.last.map({ seconds(snap.at - $0.at) >= 15 * 60 }) ?? true {
-            quarters.append(snap)
-            if quarters.count > 97 { quarters.removeFirst() }
+        let snap = scan(withMemory: false).snapshot.compacted()
+        func keep(_ list: inout [Snapshot], every: Double, count: Int) {
+            guard list.last.map({ seconds(snap.at - $0.at) >= every - 5 }) ?? true else { return }
+            list.append(snap)
+            if list.count > count { list.removeFirst() }
         }
+        keep(&minutes, every: 60, count: 11)
+        keep(&fives, every: 5 * 60, count: 13)
+        keep(&quarters, every: 15 * 60, count: 97)
     }
 
     /// Frees what only the panel needs.
@@ -89,6 +108,7 @@ final class ProcessSampler {
 
         var out = [ProcSample]()
         out.reserveCapacity(now.pids.count)
+        var seen = Set<pid_t>(minimumCapacity: now.pids.count)
         for i in now.pids.indices {
             let pid = now.pids[i]
             let start = now.starts[i]
@@ -96,9 +116,10 @@ final class ProcessSampler {
             if let cached = meta[pid], cached.start == start {
                 m = cached
             } else {
-                m = Meta(start: start, name: Self.name(of: pid), responsible: responsiblePid(pid))
+                m = Meta(start: start, name: nil, responsible: responsiblePid(pid))
                 meta[pid] = m
             }
+            seen.insert(pid)
 
             var cpu = 0.0
             if let base {
@@ -112,9 +133,11 @@ final class ProcessSampler {
                     cpu = Double(now.cpus[i]) / span * 100
                 }
             }
-            out.append(ProcSample(pid: pid, name: m.name, cpu: cpu, mem: mems[i],
+            out.append(ProcSample(pid: pid, cpu: cpu, mem: mems[i],
                                   responsible: m.responsible > 0 ? m.responsible : pid))
         }
+        // Exited processes: a panel left open for days would keep them all.
+        if meta.count > seen.count + 64 { meta = meta.filter { seen.contains($0.key) } }
         return out
     }
 
@@ -123,7 +146,7 @@ final class ProcessSampler {
         let target = now &- UInt64(window * ticksPerSecond)
         var best: Snapshot?
         var oldest: Snapshot?
-        for list in [quarters, minutes, recent] {
+        for list in [quarters, fives, minutes, recent] {
             for s in list where s.at < now {
                 if oldest == nil || s.at < oldest!.at { oldest = s }
                 if s.at <= target, best == nil || s.at > best!.at { best = s }
@@ -168,7 +191,17 @@ final class ProcessSampler {
         Double(ticks) / ticksPerSecond
     }
 
-    private static func name(of pid: pid_t) -> String {
+    /// Executable name, cached until the process exits. Only the displayed
+    /// rows need one: looking up all ~800 paths at each panel opening cost
+    /// several ms.
+    func name(of pid: pid_t) -> String {
+        if let name = meta[pid]?.name { return name }
+        let name = Self.lookUpName(pid)
+        meta[pid]?.name = name
+        return name
+    }
+
+    private static func lookUpName(_ pid: pid_t) -> String {
         var buf = [CChar](repeating: 0, count: 4096)
         if proc_pidpath(pid, &buf, UInt32(buf.count)) > 0 {
             let path = String(cString: buf)

@@ -39,6 +39,12 @@ struct TimeSeries {
 
     mutating func add(_ v: Float, from start: Double, to end: Double) {
         guard end > start else { return }
+        // Points must stay in time order: a clock set back starts over.
+        if let last = ends.last, start < last - 1 {
+            starts.removeAll()
+            ends.removeAll()
+            values.removeAll()
+        }
         starts.append(start)
         ends.append(end)
         values.append(v)

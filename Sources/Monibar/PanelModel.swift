@@ -42,7 +42,7 @@ struct ProcRow: Identifiable, Equatable {
 }
 
 /// Graph points, oldest first, nil where nothing was measured.
-struct Series {
+struct Series: Equatable {
     var values: [Float?] = []
 }
 
@@ -108,7 +108,11 @@ final class PanelModel: ObservableObject {
     private let procSampler = ProcessSampler()
     private let connectivity = Connectivity()
     private var lastProcs: [ProcSample] = []
-    private var appCache: [pid_t: (name: String, icon: NSImage)?] = [:]
+    private var diskSpaceAt = Date.distantPast
+    /// App name and icon by pid, for the rows shown. A pid that is not an
+    /// app yet (launching) is looked up again after 10 s.
+    private var appCache: [pid_t: (info: (name: String, icon: NSImage)?, at: Date)] = [:]
+    private var followUp: DispatchWorkItem?
     private var messageTimer: Timer?
     private(set) var visible = false
 
@@ -130,6 +134,7 @@ final class PanelModel: ObservableObject {
         visible = v
         if v {
             internet = connectivity.state
+            diskSpaceAt = .distantPast
             connectivity.probe()
             update = UpdateChecker.available
             sampler.sampleOthers()
@@ -137,14 +142,20 @@ final class PanelModel: ObservableObject {
             refreshHistory()
             lastProcs = procSampler.sample(window: TimeInterval(procWindow))
             rebuildRows()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+            // A second pass soon after, for rates over a real interval.
+            let work = DispatchWorkItem { [weak self] in
                 guard let self, self.visible else { return }
                 self.sampler.sampleOthers()
                 self.refreshSystem()
                 self.refreshHistory()
                 self.refreshProcesses()
             }
+            followUp?.cancel()
+            followUp = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: work)
         } else {
+            followUp?.cancel()
+            followUp = nil
             procSampler.panelClosed()
             lastProcs = []
             appCache.removeAll()
@@ -170,16 +181,33 @@ final class PanelModel: ObservableObject {
     }
 
     private func refreshSystem() {
-        cpuUser = sampler.cpuUser
-        cpuSys = sampler.cpuSys
-        gpu = sampler.gpu
-        mem = sampler.mem
-        netIn = sampler.netIn
-        netOut = sampler.netOut
-        diskRead = sampler.diskRead
-        diskWrite = sampler.diskWrite
-        diskSpace = SystemSampler.diskSpace()
-        load = SystemSampler.loadAverage()
+        // Assigned only when changed: each assignment invalidates the view.
+        set(\.cpuUser, sampler.cpuUser)
+        set(\.cpuSys, sampler.cpuSys)
+        set(\.gpu, sampler.gpu)
+        set(\.mem, sampler.mem)
+        set(\.netIn, sampler.netIn)
+        set(\.netOut, sampler.netOut)
+        set(\.diskRead, sampler.diskRead)
+        set(\.diskWrite, sampler.diskWrite)
+        set(\.load, SystemSampler.loadAverage())
+        refreshDiskSpace()
+    }
+
+    private func set<T: Equatable>(_ key: ReferenceWritableKeyPath<PanelModel, T>, _ value: T) {
+        if self[keyPath: key] != value { self[keyPath: key] = value }
+    }
+
+    /// The free space query computes purgeable space and costs about 6 ms:
+    /// run off the main thread, at most once a minute.
+    private func refreshDiskSpace() {
+        let now = Date()
+        guard now.timeIntervalSince(diskSpaceAt) >= 60 else { return }
+        diskSpaceAt = now
+        Task.detached(priority: .utility) {
+            let space = SystemSampler.diskSpace()
+            await MainActor.run { self.diskSpace = space }
+        }
     }
 
     private func refreshHistory() {
@@ -187,16 +215,16 @@ final class PanelModel: ObservableObject {
         func s(_ t: TimeSeries) -> Series {
             Series(values: t.buckets(window: range.seconds, count: Self.graphPoints, now: now))
         }
-        hTotal = s(sampler.hCPU)
-        hUser = s(sampler.hUser)
-        hGPU = s(sampler.hGPU)
-        hMem = s(sampler.hMem)
-        hNetIn = s(sampler.hNetIn)
-        hNetOut = s(sampler.hNetOut)
-        hInternet = Series(values: connectivity.history.buckets(window: range.seconds, count: Self.graphPoints,
-                                                                 now: now, lowest: true))
-        hDiskR = s(sampler.hDiskR)
-        hDiskW = s(sampler.hDiskW)
+        set(\.hTotal, s(sampler.hCPU))
+        set(\.hUser, s(sampler.hUser))
+        set(\.hGPU, s(sampler.hGPU))
+        set(\.hMem, s(sampler.hMem))
+        set(\.hNetIn, s(sampler.hNetIn))
+        set(\.hNetOut, s(sampler.hNetOut))
+        set(\.hInternet, Series(values: connectivity.history.buckets(window: range.seconds, count: Self.graphPoints,
+                                                                      now: now, lowest: true)))
+        set(\.hDiskR, s(sampler.hDiskR))
+        set(\.hDiskW, s(sampler.hDiskW))
     }
 
     private func refreshProcesses() {
@@ -204,50 +232,52 @@ final class PanelModel: ObservableObject {
         rebuildRows()
     }
 
+    /// Sorts on the numbers alone, then looks up names and icons for the
+    /// rows shown only.
     private func rebuildRows() {
-        hiddenProcs = max(0, procSampler.total - lastProcs.count)
+        set(\.hiddenProcs, max(0, procSampler.total - lastProcs.count))
 
-        var built: [ProcRow]
+        var entries: [(pid: pid_t, cpu: Double, mem: UInt64, count: Int)]
         if groupApps {
             var groups: [pid_t: (cpu: Double, mem: UInt64, count: Int)] = [:]
-            var names: [pid_t: String] = [:]
+            groups.reserveCapacity(lastProcs.count / 2)
             for p in lastProcs {
-                var g = groups[p.responsible] ?? (0, 0, 0)
-                g.cpu += p.cpu
-                g.mem += p.mem
-                g.count += 1
-                groups[p.responsible] = g
-                if p.pid == p.responsible { names[p.pid] = p.name }
+                groups[p.responsible, default: (0, 0, 0)].cpu += p.cpu
+                groups[p.responsible]!.mem += p.mem
+                groups[p.responsible]!.count += 1
             }
-            built = groups.map { pid, g in
-                let app = appInfo(pid)
-                return ProcRow(id: pid, name: app?.name ?? names[pid] ?? "pid \(pid)",
-                               cpu: g.cpu, mem: g.mem, count: g.count,
-                               isApp: app != nil, icon: app?.icon)
-            }
+            entries = groups.map { ($0.key, $0.value.cpu, $0.value.mem, $0.value.count) }
         } else {
-            built = lastProcs.map {
-                ProcRow(id: $0.pid, name: $0.name, cpu: $0.cpu, mem: $0.mem, count: 1, isApp: false, icon: nil)
-            }
+            entries = lastProcs.map { ($0.pid, $0.cpu, $0.mem, 1) }
         }
         if sortByMemory {
-            built.sort { $0.mem > $1.mem }
+            entries.sort { $0.mem > $1.mem }
         } else {
-            built.sort { $0.cpu != $1.cpu ? $0.cpu > $1.cpu : $0.mem > $1.mem }
+            entries.sort { $0.cpu != $1.cpu ? $0.cpu > $1.cpu : $0.mem > $1.mem }
         }
-        let top = Array(built.prefix(Self.rowCount))
+        let top = entries.prefix(Self.rowCount).map { e -> ProcRow in
+            let app = groupApps ? appInfo(e.pid) : nil
+            return ProcRow(id: e.pid, name: app?.name ?? procSampler.name(of: e.pid),
+                           cpu: e.cpu, mem: e.mem, count: e.count, isApp: app != nil, icon: app?.icon)
+        }
         if top != rows { rows = top }
+        if appCache.count > Self.rowCount * 3 {
+            let shown = Set(top.map(\.id))
+            appCache = appCache.filter { shown.contains($0.key) }
+        }
     }
 
     private func appInfo(_ pid: pid_t) -> (name: String, icon: NSImage)? {
-        if let cached = appCache[pid] { return cached }
+        if let cached = appCache[pid], cached.info != nil || Date().timeIntervalSince(cached.at) < 10 {
+            return cached.info
+        }
         var info: (name: String, icon: NSImage)?
         if let app = NSRunningApplication(processIdentifier: pid), let name = app.localizedName {
             let icon = app.icon ?? NSWorkspace.shared.icon(for: .application)
             icon.size = NSSize(width: 16, height: 16)
             info = (name, icon)
         }
-        appCache[pid] = info
+        appCache[pid] = (info, Date())
         return info
     }
 
@@ -311,11 +341,26 @@ final class PanelModel: ObservableObject {
         }
     }
 
+    private var syncingLaunchAtLogin = false
+
+    private func launchAtLoginSilently(_ on: Bool) {
+        syncingLaunchAtLogin = true
+        launchAtLogin = on
+        syncingLaunchAtLogin = false
+    }
+
     private func setLaunchAtLogin(_ on: Bool) {
+        guard !syncingLaunchAtLogin else { return }
         do {
             if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
         } catch {
             flash("Démarrage auto : \(error.localizedDescription)")
+        }
+        // A failed or pending registration leaves the switch on the state
+        // macOS actually has.
+        let enabled = SMAppService.mainApp.status == .enabled
+        if enabled != launchAtLogin {
+            DispatchQueue.main.async { [weak self] in self?.launchAtLoginSilently(enabled) }
         }
     }
 }

@@ -44,6 +44,20 @@ enum SelfUpdater {
         }
     }
 
+    /// The signing team of the running app, as `codesign -dv` prints it:
+    /// "not set" for an ad hoc build.
+    private static func runningTeamID() -> String {
+        var code: SecCode?
+        var staticCode: SecStaticCode?
+        var info: CFDictionary?
+        guard SecCodeCopySelf([], &code) == errSecSuccess, let code,
+              SecCodeCopyStaticCode(code, [], &staticCode) == errSecSuccess, let staticCode,
+              SecCodeCopySigningInformation(staticCode, SecCSFlags(rawValue: kSecCSSigningInformation), &info) == errSecSuccess,
+              let team = (info as? [String: Any])?[kSecCodeInfoTeamIdentifier as String] as? String
+        else { return "not set" }
+        return team
+    }
+
     private static func install(dmgURL: URL) async throws {
         // A dev binary has no bundle to replace. A bundle launched from
         // the DMG or Downloads runs from a read-only translocated copy.
@@ -73,7 +87,8 @@ enum SelfUpdater {
         let scriptPath = (workDir as NSString).appendingPathComponent("install.sh")
         let script = SelfUpdateScript.make(
             bundlePath: bundlePath, dmgPath: dmgPath, workDir: workDir,
-            pid: ProcessInfo.processInfo.processIdentifier
+            pid: ProcessInfo.processInfo.processIdentifier,
+            bundleID: Bundle.main.bundleIdentifier ?? "", teamID: runningTeamID()
         )
         do {
             try script.write(toFile: scriptPath, atomically: true, encoding: .utf8)

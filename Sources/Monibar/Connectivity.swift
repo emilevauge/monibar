@@ -23,7 +23,7 @@ final class Connectivity {
     /// 1 online, 0.5 no Internet access, 0 offline; each point covers the
     /// time since the previous check.
     private(set) var history = TimeSeries()
-    private var lastRecord: Double = 0
+    private var lastRecord: (wall: Double, uptime: Double)?
 
     private var monitor: NWPathMonitor?
     private var pathUp = false
@@ -51,9 +51,15 @@ final class Connectivity {
         case .noInternet: 0.5
         case .offline, .unknown: 0
         }
-        // Checks more than 2.5 min apart span a sleep: left as a gap.
-        let now = Date().timeIntervalSinceReferenceDate
-        if lastRecord > 0, now - lastRecord <= 150 { history.add(value, from: lastRecord, to: now) }
+        // Checks more than 2.5 min apart, or across a sleep or a clock change
+        // (wall and uptime disagree), are left as a gap.
+        let now = (wall: Date().timeIntervalSinceReferenceDate, uptime: ProcessInfo.processInfo.systemUptime)
+        if let last = lastRecord {
+            let dt = now.uptime - last.uptime
+            if dt > 0, dt <= 150, abs((now.wall - last.wall) - dt) < 2 {
+                history.add(value, from: last.wall, to: now.wall)
+            }
+        }
         lastRecord = now
     }
 

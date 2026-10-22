@@ -2,7 +2,7 @@ import Darwin
 import Foundation
 import IOKit
 
-struct MemInfo {
+struct MemInfo: Equatable {
     var total: UInt64 = 0
     var app: UInt64 = 0
     var wired: UInt64 = 0
@@ -31,11 +31,13 @@ final class SystemSampler {
     private static let maxGap: Double = 150
 
     private let host = mach_host_self()
-    private var prevTotalTicks: [UInt32] = []
-    private var prevCPUTime: Double = 0
-    private var prevNet: (rx: UInt64, tx: UInt64)?
-    private var prevDisk: (r: UInt64, w: UInt64)?
-    private var prevTime: Double = 0
+    private var prevTotalTicks: (user: UInt32, system: UInt32, idle: UInt32, nice: UInt32)?
+    private var prevCPU: Stamp?
+    /// Per interface and per disk: one going away or coming back must not
+    /// change the sum by its whole count.
+    private var prevNet: [UInt16: (rx: UInt64, tx: UInt64)] = [:]
+    private var prevDisk: [UInt64: (r: UInt64, w: UInt64)] = [:]
+    private var prevOthers: Stamp?
     private var netBuf = [UInt8]()
     private var netIncluded: [UInt16: Bool] = [:]
     private var diskDrivers: [io_service_t] = []
@@ -64,7 +66,24 @@ final class SystemSampler {
 
     var cpuTotal: Double { cpuUser + cpuSys }
 
-    private static var now: Double { Date().timeIntervalSinceReferenceDate }
+    /// Wall time places a point on the graphs; uptime, which stops while
+    /// the Mac sleeps and never goes back, measures how long it covers.
+    private struct Stamp {
+        let wall: Double
+        let uptime: Double
+
+        static var now: Stamp {
+            Stamp(wall: Date().timeIntervalSinceReferenceDate, uptime: ProcessInfo.processInfo.systemUptime)
+        }
+
+        /// Seconds since `earlier`, nil when the Mac slept or the clock was
+        /// changed in between: the two clocks then disagree.
+        func interval(since earlier: Stamp, max: Double) -> Double? {
+            let dt = uptime - earlier.uptime
+            guard dt > 0, dt <= max, abs((wall - earlier.wall) - dt) < 2 else { return nil }
+            return dt
+        }
+    }
 
     /// Every tick: total CPU only, one Mach call.
     func sampleCPU() {
@@ -76,61 +95,77 @@ final class SystemSampler {
             }
         }
         guard kr == KERN_SUCCESS else { return }
-        let now = Self.now
-        let since = prevCPUTime
-        prevCPUTime = now
+        let now = Stamp.now
+        let since = prevCPU
+        prevCPU = now
         let t = load.cpu_ticks
-        let cur = [t.0, t.1, t.2, t.3] // user, system, idle, nice
+        let cur = (user: UInt32(t.0), system: UInt32(t.1), idle: UInt32(t.2), nice: UInt32(t.3))
         defer { prevTotalTicks = cur }
-        guard prevTotalTicks.count == 4 else { return }
+        guard let p = prevTotalTicks else { return }
         // 32-bit tick counters wrap, wrapping subtraction keeps deltas right.
-        let d = (0..<4).map { UInt64(cur[$0] &- prevTotalTicks[$0]) }
-        let all = d.reduce(0, +)
+        let user = UInt64(cur.user &- p.user) + UInt64(cur.nice &- p.nice)
+        let system = UInt64(cur.system &- p.system)
+        let all = user + system + UInt64(cur.idle &- p.idle)
         guard all > 0 else { return }
-        cpuUser = Double(d[Int(CPU_STATE_USER)] + d[Int(CPU_STATE_NICE)]) / Double(all)
-        cpuSys = Double(d[Int(CPU_STATE_SYSTEM)]) / Double(all)
+        cpuUser = Double(user) / Double(all)
+        cpuSys = Double(system) / Double(all)
         recentCPU.push(Float(cpuTotal))
-        guard now - since <= Self.maxCPUGap else { return }
-        hUser.add(Float(cpuUser), from: since, to: now)
-        hCPU.add(Float(cpuTotal), from: since, to: now)
+        guard let since, now.interval(since: since, max: Self.maxCPUGap) != nil else { return }
+        hUser.add(Float(cpuUser), from: since.wall, to: now.wall)
+        hCPU.add(Float(cpuTotal), from: since.wall, to: now.wall)
     }
 
     /// Memory, network, disk and GPU. Called every tick with the panel open,
     /// once a minute otherwise.
     func sampleOthers() {
-        let now = Self.now
-        let dt = prevTime > 0 ? now - prevTime : 0
-        let since = prevTime
-        prevTime = now
-        let record = dt > 0 && dt <= Self.maxGap
+        let now = Stamp.now
+        let since = prevOthers
+        prevOthers = now
+        // nil after a sleep, a clock change or the first call: the rates
+        // are then reset and nothing is recorded.
+        let dt = since.flatMap { now.interval(since: $0, max: Self.maxGap) }
 
         sampleMemory()
 
         let net = readNet()
-        if let p = prevNet, dt > 0, net.rx >= p.rx, net.tx >= p.tx {
-            netIn = Double(net.rx - p.rx) / dt
-            netOut = Double(net.tx - p.tx) / dt
-        }
+        let (rx, tx) = Self.growth(from: prevNet, to: net) { ($0.rx, $0.tx) }
         prevNet = net
+        netIn = dt.map { Double(rx) / $0 } ?? 0
+        netOut = dt.map { Double(tx) / $0 } ?? 0
 
         if samples % 30 == 0 { refreshDiskDrivers() }
         let disk = readDisk()
-        if let p = prevDisk, dt > 0, disk.r >= p.r, disk.w >= p.w {
-            diskRead = Double(disk.r - p.r) / dt
-            diskWrite = Double(disk.w - p.w) / dt
-        }
+        let (r, w) = Self.growth(from: prevDisk, to: disk) { ($0.r, $0.w) }
         prevDisk = disk
+        diskRead = dt.map { Double(r) / $0 } ?? 0
+        diskWrite = dt.map { Double(w) / $0 } ?? 0
 
         gpu = readGPU()
         samples += 1
-        guard record else { return }
+        guard let since, dt != nil else { return }
 
-        hMem.add(mem.total > 0 ? Float(Double(mem.used) / Double(mem.total)) : 0, from: since, to: now)
-        hNetIn.add(Float(netIn), from: since, to: now)
-        hNetOut.add(Float(netOut), from: since, to: now)
-        hDiskR.add(Float(diskRead), from: since, to: now)
-        hDiskW.add(Float(diskWrite), from: since, to: now)
-        if let gpu { hGPU.add(Float(gpu), from: since, to: now) }
+        let (from, to) = (since.wall, now.wall)
+        hMem.add(mem.total > 0 ? Float(Double(mem.used) / Double(mem.total)) : 0, from: from, to: to)
+        hNetIn.add(Float(netIn), from: from, to: to)
+        hNetOut.add(Float(netOut), from: from, to: to)
+        hDiskR.add(Float(diskRead), from: from, to: to)
+        hDiskW.add(Float(diskWrite), from: from, to: to)
+        if let gpu { hGPU.add(Float(gpu), from: from, to: to) }
+    }
+
+    /// Bytes added since `previous`, summed over the counters present both
+    /// times: a new interface or disk brings none of its past bytes, and a
+    /// counter that went back (reset) adds nothing.
+    private static func growth<K: Hashable, V>(from previous: [K: V], to current: [K: V],
+                                               _ pair: (V) -> (UInt64, UInt64)) -> (UInt64, UInt64) {
+        var a: UInt64 = 0, b: UInt64 = 0
+        for (key, value) in current {
+            guard let old = previous[key] else { continue }
+            let (x, y) = pair(value), (ox, oy) = pair(old)
+            if x >= ox { a += x - ox }
+            if y >= oy { b += y - oy }
+        }
+        return (a, b)
     }
 
     // MARK: Memory
@@ -153,7 +188,10 @@ final class SystemSampler {
             mem.total = total
         }
         // Same split as Activity Monitor.
-        mem.app = (UInt64(stats.internal_page_count) - UInt64(stats.purgeable_count)) * page
+        // The counters are not read atomically: never let purgeable exceed
+        // internal and trap.
+        let internalPages = UInt64(stats.internal_page_count), purgeable = UInt64(stats.purgeable_count)
+        mem.app = (internalPages > purgeable ? internalPages - purgeable : 0) * page
         mem.wired = UInt64(stats.wire_count) * page
         mem.compressed = UInt64(stats.compressor_page_count) * page
         mem.cached = (UInt64(stats.external_page_count) + UInt64(stats.purgeable_count)) * page
@@ -170,14 +208,16 @@ final class SystemSampler {
     // MARK: Network
 
     /// 64-bit interface counters through NET_RT_IFLIST2 (getifaddrs only has 32-bit ones).
-    private func readNet() -> (rx: UInt64, tx: UInt64) {
+    /// Byte counters of the physical interfaces, by interface index.
+    private func readNet() -> [UInt16: (rx: UInt64, tx: UInt64)] {
         var mib: [Int32] = [CTL_NET, PF_ROUTE, 0, 0, NET_RT_IFLIST2, 0]
         var len = 0
-        guard sysctl(&mib, 6, nil, &len, nil, 0) == 0, len > 0 else { return (0, 0) }
+        guard sysctl(&mib, 6, nil, &len, nil, 0) == 0, len > 0 else { return [:] }
         if netBuf.count < len { netBuf = [UInt8](repeating: 0, count: len + 1024) }
-        guard sysctl(&mib, 6, &netBuf, &len, nil, 0) == 0 else { return (0, 0) }
+        guard sysctl(&mib, 6, &netBuf, &len, nil, 0) == 0 else { return [:] }
 
-        var rx: UInt64 = 0, tx: UInt64 = 0
+        var counters: [UInt16: (rx: UInt64, tx: UInt64)] = [:]
+        var seen = Set<UInt16>()
         netBuf.withUnsafeBytes { raw in
             var off = 0
             while off + MemoryLayout<if_msghdr>.size <= len {
@@ -185,15 +225,18 @@ final class SystemSampler {
                 if hdr.ifm_msglen == 0 { break }
                 if Int32(hdr.ifm_type) == RTM_IFINFO2, off + MemoryLayout<if_msghdr2>.size <= len {
                     let h2 = raw.loadUnaligned(fromByteOffset: off, as: if_msghdr2.self)
+                    seen.insert(h2.ifm_index)
                     if includeInterface(h2.ifm_index) {
-                        rx += h2.ifm_data.ifi_ibytes
-                        tx += h2.ifm_data.ifi_obytes
+                        counters[h2.ifm_index] = (h2.ifm_data.ifi_ibytes, h2.ifm_data.ifi_obytes)
                     }
                 }
                 off += Int(hdr.ifm_msglen)
             }
         }
-        return (rx, tx)
+        // macOS reuses the index of a removed interface: forget the decision
+        // so a VPN tunnel taking an old en index is not counted.
+        if netIncluded.count > seen.count { netIncluded = netIncluded.filter { seen.contains($0.key) } }
+        return counters
     }
 
     /// Physical interfaces only: VPN tunnels (utun) would count the same traffic twice.
@@ -222,15 +265,18 @@ final class SystemSampler {
         }
     }
 
-    private func readDisk() -> (r: UInt64, w: UInt64) {
-        var r: UInt64 = 0, w: UInt64 = 0
+    /// Byte counters by disk driver, keyed by registry entry id.
+    private func readDisk() -> [UInt64: (r: UInt64, w: UInt64)] {
+        var counters: [UInt64: (r: UInt64, w: UInt64)] = [:]
         for s in diskDrivers {
-            guard let stats = IORegistryEntryCreateCFProperty(s, "Statistics" as CFString, kCFAllocatorDefault, 0)?
-                .takeRetainedValue() as? NSDictionary else { continue }
-            r += (stats["Bytes (Read)"] as? NSNumber)?.uint64Value ?? 0
-            w += (stats["Bytes (Write)"] as? NSNumber)?.uint64Value ?? 0
+            var id: UInt64 = 0
+            guard IORegistryEntryGetRegistryEntryID(s, &id) == KERN_SUCCESS,
+                  let stats = IORegistryEntryCreateCFProperty(s, "Statistics" as CFString, kCFAllocatorDefault, 0)?
+                    .takeRetainedValue() as? NSDictionary else { continue }
+            counters[id] = ((stats["Bytes (Read)"] as? NSNumber)?.uint64Value ?? 0,
+                            (stats["Bytes (Write)"] as? NSNumber)?.uint64Value ?? 0)
         }
-        return (r, w)
+        return counters
     }
 
     // MARK: GPU

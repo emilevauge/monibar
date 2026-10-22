@@ -16,7 +16,7 @@ xattr -dr com.apple.quarantine /Applications/Monibar.app   # not notarized, bypa
 open /Applications/Monibar.app
 ```
 
-Monibar then updates itself: when a new release is out, a notification offers to install it. The settings menu (gear icon) can also check for one. Requires macOS 14 or later.
+Monibar then updates itself: when a new release is out, a notification offers to install it. The update is installed only if the new app is signed by the same team with the same bundle id; otherwise the installed app stays and is relaunched. The settings menu (gear icon) can also check for one. Requires macOS 14 or later.
 
 ## Features
 
@@ -57,6 +57,12 @@ Processes owned by other users (root daemons) cannot be read without privileges:
 ```
 
 `./snapshot.sh panel.png [--light]` renders the panel to a PNG, for checking a layout change.
+
+Measuring:
+
+- `MB_BENCH=1 .build/release/Monibar` times each sampling step and quits.
+- `MB_CYCLES=40 .build/release/Monibar` opens and closes the panel 40 times off screen, then waits: run `leaks <pid>` to check that nothing grows with the openings.
+- `MB_HOLD=60 .build/release/Monibar --snapshot` keeps an open panel off screen for 60 s, to measure its CPU with `ps -o time`.
 
 ## Release
 

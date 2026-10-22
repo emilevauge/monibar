@@ -21,6 +21,9 @@ final class StatusController: NSResponder {
     private var outsideSince: Date?
     private var outsideClicks: Any?
     private var lastText: String?
+    /// When the popover last closed: a transient popover closes on the
+    /// mouse-down of a click on the icon, before the click's action runs.
+    private var closedAt = Date.distantPast
 
     init(model: PanelModel) {
         self.model = model
@@ -89,7 +92,8 @@ final class StatusController: NSResponder {
             expandPeek()
         } else if popover.isShown {
             close()
-        } else {
+        } else if Date().timeIntervalSince(closedAt) > 0.3 {
+            // Not the click that just closed it: that one must not reopen it.
             show(peek: false)
         }
     }
@@ -133,6 +137,7 @@ final class StatusController: NSResponder {
     }
 
     private func didClose() {
+        closedAt = Date()
         stopPeekWatch()
         if let m = outsideClicks { NSEvent.removeMonitor(m) }
         outsideClicks = nil
