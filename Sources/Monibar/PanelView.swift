@@ -23,7 +23,7 @@ struct PanelView: View {
                           layers: [GraphLayer(series: model.hDiskR, color: .teal),
                                    GraphLayer(series: model.hDiskW, color: .pink)],
                           stacked: true,
-                          footer: model.diskSpace.map { "\(Format.bytes($0.free)) libres" })
+                          space: model.diskSpace)
             }
             .fixedSize(horizontal: false, vertical: true)
             Divider()
@@ -111,7 +111,8 @@ struct PanelView: View {
     /// `status`: a colored state at the right of the title.
     private func ioSection(title: String, rates: (down: Double, up: Double), layers: [GraphLayer],
                            stacked: Bool = false, footer: String? = nil,
-                           status: (color: Color, text: String)? = nil, outages: Series? = nil) -> some View {
+                           status: (color: Color, text: String)? = nil, outages: Series? = nil,
+                           space: (free: Int64, total: Int64)? = nil) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
                 Text(title).font(.system(size: 13, weight: .semibold))
@@ -124,7 +125,24 @@ struct PanelView: View {
                     .font(.caption.weight(.medium))
                     .foregroundStyle(status.color)
                     .help("Testé toutes les minutes, à chaque changement de réseau et à l'ouverture du panel")
+                } else if let space {
+                    Text("\(Format.bytes(space.free)) libres")
+                        .font(.system(size: 13, weight: .semibold))
+                        .monospacedDigit()
+                        .lineLimit(1)
                 }
+            }
+            if let space {
+                let total = Double(max(space.total, 1))
+                let freeShare = Double(space.free) / total
+                // Blue while there is room, orange under 10 % free, red under 5 %.
+                let color: Color = freeShare < 0.05 ? .red : freeShare < 0.10 ? .orange : .blue
+                SegmentBar(segments: [(1 - freeShare, color)])
+                Text("\(Format.bytes(space.total - space.free)) utilisés sur \(Format.bytes(space.total))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .lineLimit(1)
             }
             let legends = Group {
                 Legend(color: layers[0].color, text: "↓ \(Format.rate(rates.down))")

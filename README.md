@@ -24,7 +24,7 @@ Monibar then updates itself: when a new release is out, a notification offers to
 - **Hover panel**: resting the pointer on the capsule opens the panel, which closes when the pointer leaves it. A click keeps it open until a click outside or Escape. Same behavior and layout as [Calbar](https://github.com/emilevauge/calbar).
 - **CPU**: user, system and GPU load, and a history graph.
 - **Memory**: used out of total, split into app, wired and compressed memory, and swap.
-- **Network and disk**: read and write rates with mirrored graphs, free disk space.
+- **Network and disk**: read and write rates with mirrored graphs. Disk space: free space, a fill bar (orange under 10 % free, red under 5 %), used out of total.
 - **Internet access**: online, no Internet access (a network but no route out, or a captive portal) or offline, beside the network title. Its history tints the network graph: orange where there was no Internet access, red where the Mac was offline. Checked once a minute, on each network change and when the panel opens, with the request macOS uses to detect captive portals.
 - **History**: graphs over 1 min, 15 min or 1 h.
 - **Top apps**: the 10 apps or processes using the most CPU or memory. Helper processes are grouped under their app (Chrome, Slack...). CPU is averaged over 10 s, 1 min, 1 h or 1 day, so the ranking stays steady.
