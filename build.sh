@@ -11,8 +11,8 @@ cd "$(dirname "$0")"
 APP=build/Monibar.app
 DMG=build/Monibar.dmg
 BUNDLE_ID="dev.monibar.app"
-VERSION="0.1.4"
-BUILD="5"
+VERSION="0.1.5"
+BUILD="6"
 
 echo "▶ Building release…"
 swift build -c release
