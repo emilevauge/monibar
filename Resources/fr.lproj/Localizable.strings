@@ -1,0 +1,87 @@
+/* Monibar, French. Keys are the English text from the code. */
+
+/* Sections */
+"Network" = "Réseau";
+"Disk" = "Disque";
+"Memory" = "Mémoire";
+"User %@" = "Utilisateur %@";
+"System %@" = "Système %@";
+"Load %@" = "Charge %@";
+"Load average over 1, 5 and 15 min: %@" = "Charge moyenne 1, 5, 15 min : %@";
+"Apps %@" = "Apps %@";
+"Wired %@" = "Câblée %@";
+"Compressed %@" = "Compressée %@";
+"Total %@ · Swap %@" = "Sur %1$@ · Swap %2$@";
+"%@ free" = "%@ libres";
+"%@ used of %@" = "%1$@ utilisés sur %2$@";
+
+/* Internet */
+"Online" = "En ligne";
+"No Internet access" = "Pas d'accès Internet";
+"no Internet access" = "pas d'accès Internet";
+"Offline" = "Hors ligne";
+"Checked every minute, on each network change and when the panel opens" = "Testé toutes les minutes, à chaque changement de réseau et à l'ouverture du panel";
+"Orange background: no Internet access. Red background: offline." = "Fond orange : sans accès Internet. Fond rouge : hors ligne.";
+
+/* Processes */
+"Apps" = "Apps";
+"Processes" = "Processus";
+"Mem." = "Mém.";
+"1d" = "1j";
+"CPU averaged over this window" = "Moyenne du CPU sur cette durée";
+"%lld system processes unreadable without privileges" = "%lld processus système non lisibles sans privilèges";
+"Processes of other users (root). Their usage is included in the CPU total." = "Processus d'autres utilisateurs (root). Leur conso est incluse dans le total CPU.";
+"Search the web for what this is" = "Rechercher sur le web de quoi il s'agit";
+"Search the web for “%@”" = "Rechercher « %@ » sur le web";
+"Quit" = "Quitter";
+"Force" = "Forcer";
+"Force Quit" = "Forcer à quitter";
+"Terminate (SIGTERM)" = "Terminer (SIGTERM)";
+"Kill (SIGKILL)" = "Tuer (SIGKILL)";
+"Quit the app" = "Quitter l'app";
+"Force the app to quit" = "Forcer l'app à quitter";
+"Send SIGTERM" = "Envoyer SIGTERM";
+"Send SIGKILL" = "Envoyer SIGKILL";
+"Quit or force quit the app" = "Quitter ou forcer l'app";
+"Terminate or kill the process" = "Terminer ou tuer le processus";
+"the app refused" = "l'app a refusé";
+"permission denied" = "permission refusée";
+"Failed on %@: %@" = "Échec sur %1$@ : %2$@";
+"Force quit: %@" = "Forcé : %@";
+"Quit: %@" = "Quitté : %@";
+
+/* Footer and settings */
+"Open Activity Monitor" = "Ouvrir le Moniteur d'activité";
+"Settings" = "Réglages";
+"Icon window" = "Fenêtre de l'icône";
+"Launch at login" = "Lancer au démarrage";
+"Launch at login: %@" = "Démarrage auto : %@";
+"Graph history length" = "Durée d'historique des graphes";
+
+/* Updates */
+"Install Monibar %@" = "Installer Monibar %@";
+"Check for updates" = "Rechercher les mises à jour";
+"Monibar %@ is up to date" = "Monibar %@ est à jour";
+"Monibar %@ is available" = "Monibar %@ est disponible";
+"Downloading Monibar %@…" = "Téléchargement de Monibar %@…";
+"GitHub unreachable" = "GitHub injoignable";
+"Update" = "Mettre à jour";
+"Release notes" = "Notes de version";
+"Click to open the release page." = "Cliquer pour ouvrir la page de la version.";
+"Click Update to install it and relaunch Monibar." = "Cliquer sur Mettre à jour pour l'installer et relancer Monibar.";
+"Monibar could not update" = "Monibar n'a pas pu se mettre à jour";
+"Updates only work for the installed app, not a dev build." = "La mise à jour ne marche que pour l'app installée, pas un build de dev.";
+"Move Monibar to the Applications folder, then try again." = "Déplacer Monibar dans le dossier Applications, puis réessayer.";
+"Monibar cannot write to its install folder." = "Monibar ne peut pas écrire dans son dossier d'installation.";
+"The download failed (HTTP %@)." = "Le téléchargement a échoué (HTTP %@).";
+"The install could not be prepared." = "L'installation n'a pas pu être préparée.";
+"The install could not start." = "L'installation n'a pas pu démarrer.";
+"This copy of Monibar is not signed, so the update could not be verified." = "Cette copie de Monibar n'est pas signée : la mise à jour ne pourrait pas être vérifiée.";
+"The download failed." = "Le téléchargement a échoué.";
+
+/* Byte units */
+"B" = "o";
+"KB" = "Ko";
+"MB" = "Mo";
+"GB" = "Go";
+"TB" = "To";

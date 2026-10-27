@@ -8,11 +8,14 @@ import AppKit
 /// Built from CALayers, so an update only moves the fill edge: no image is
 /// redrawn.
 final class IconView: NSView {
-    private static let body: CGFloat = 16
-    private static let pinLength: CGFloat = 2
+    // Shared with the app icon, which draws the same chip.
+    static let body: CGFloat = 16
+    static let pinLength: CGFloat = 2
+    static let pinSpacing: CGFloat = 4.5
+    static let cornerRadius: CGFloat = 3.2
     /// Same stroke as Calbar's calendar page, so both icons match.
-    private static let pinWidth: CGFloat = 1.3
-    private static let outline: CGFloat = 1.3
+    static let pinWidth: CGFloat = 1.3
+    static let outline: CGFloat = 1.3
     static let size = NSSize(width: body + 2 * pinLength + 1, height: 22)
 
     private let track = CALayer()
@@ -51,7 +54,7 @@ final class IconView: NSView {
         let box = self.box
 
         for (i, pin) in pins.enumerated() {
-            let offset = CGFloat(i % 3 - 1) * 4.5 - Self.pinWidth / 2
+            let offset = CGFloat(i % 3 - 1) * Self.pinSpacing - Self.pinWidth / 2
             pin.frame = switch i / 3 {
             case 0: CGRect(x: box.minX - Self.pinLength, y: box.midY + offset, width: Self.pinLength, height: Self.pinWidth)
             case 1: CGRect(x: box.maxX, y: box.midY + offset, width: Self.pinLength, height: Self.pinWidth)
@@ -62,7 +65,7 @@ final class IconView: NSView {
         }
 
         track.frame = box
-        track.cornerRadius = 3.2
+        track.cornerRadius = Self.cornerRadius
         track.masksToBounds = true
         track.borderWidth = Self.outline
         fill.anchorPoint = .zero

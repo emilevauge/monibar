@@ -138,6 +138,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 MainActor.assumeIsolated {
+    // Build step: `Monibar --generate-icon out.png` renders the app icon.
+    let args = CommandLine.arguments
+    if let i = args.firstIndex(of: "--generate-icon"), i + 1 < args.count {
+        exit(AppIcon.writePNG(to: args[i + 1]) ? 0 : 1)
+    }
     let app = NSApplication.shared
     let delegate = AppDelegate()
     app.delegate = delegate

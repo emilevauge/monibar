@@ -11,7 +11,7 @@ struct PanelView: View {
         VStack(alignment: .leading, spacing: 0) {
             cpuSection
             Divider()
-            ioSection(title: "Réseau", rates: (model.netIn, model.netOut),
+            ioSection(title: String(localized: "Network"), rates: (model.netIn, model.netOut),
                       layers: [GraphLayer(series: model.hNetIn, color: .green),
                                GraphLayer(series: model.hNetOut, color: .orange)],
                       status: internetStatus, outages: model.hInternet)
@@ -19,7 +19,7 @@ struct PanelView: View {
             HStack(alignment: .top, spacing: 0) {
                 memorySection
                 Divider()
-                ioSection(title: "Disque", rates: (model.diskRead, model.diskWrite),
+                ioSection(title: String(localized: "Disk"), rates: (model.diskRead, model.diskWrite),
                           layers: [GraphLayer(series: model.hDiskR, color: .teal),
                                    GraphLayer(series: model.hDiskW, color: .pink)],
                           stacked: true,
@@ -44,17 +44,17 @@ struct PanelView: View {
         VStack(alignment: .leading, spacing: 6) {
             SectionHeader(title: "CPU", value: Format.percent(model.cpuUser + model.cpuSys))
             HStack(spacing: 10) {
-                Legend(color: .blue, text: "Utilisateur \(Format.percent(model.cpuUser))")
-                Legend(color: .red, text: "Système \(Format.percent(model.cpuSys))")
+                Legend(color: .blue, text: String(localized: "User \(Format.percent(model.cpuUser))"))
+                Legend(color: .red, text: String(localized: "System \(Format.percent(model.cpuSys))"))
                 if let g = model.gpu {
                     Legend(color: .purple, text: "GPU \(Format.percent(g))")
                 }
                 Spacer(minLength: 0)
                 if let l = model.load.first {
-                    Text("Charge \(String(format: "%.1f", l))")
+                    Text("Load \(String(format: "%.1f", l))")
                         .font(.caption)
                         .foregroundStyle(.tertiary)
-                        .help("Charge moyenne 1, 5, 15 min : " + model.load.map { String(format: "%.1f", $0) }.joined(separator: " "))
+                        .help(String(localized: "Load average over 1, 5 and 15 min: \(model.load.map { String(format: "%.1f", $0) }.joined(separator: " "))"))
                 }
             }
             Graph(layers: [GraphLayer(series: model.hTotal, color: .red),
@@ -73,18 +73,18 @@ struct PanelView: View {
         let m = model.mem
         let total = Double(max(m.total, 1))
         return VStack(alignment: .leading, spacing: 6) {
-            SectionHeader(title: "Mémoire", value: Format.bytes(m.used))
+            SectionHeader(title: String(localized: "Memory"), value: Format.bytes(m.used))
             SegmentBar(segments: [(Double(m.app) / total, .blue),
                                   (Double(m.wired) / total, .orange),
                                   (Double(m.compressed) / total, .purple),
                                   (Double(m.cached) / total, .gray.opacity(0.5))])
             VStack(alignment: .leading, spacing: 2) {
-                Legend(color: .blue, text: "Apps \(Format.bytes(m.app))")
-                Legend(color: .orange, text: "Câblée \(Format.bytes(m.wired))")
-                Legend(color: .purple, text: "Compressée \(Format.bytes(m.compressed))")
+                Legend(color: .blue, text: String(localized: "Apps \(Format.bytes(m.app))"))
+                Legend(color: .orange, text: String(localized: "Wired \(Format.bytes(m.wired))"))
+                Legend(color: .purple, text: String(localized: "Compressed \(Format.bytes(m.compressed))"))
             }
             Graph(layers: [GraphLayer(series: model.hMem, color: .blue)], maxValue: 1, height: 32)
-            Text("Sur \(Format.bytes(m.total)) · Swap \(Format.bytes(m.swapUsed))")
+            Text("Total \(Format.bytes(m.total)) · Swap \(Format.bytes(m.swapUsed))")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
@@ -100,9 +100,9 @@ struct PanelView: View {
     /// Internet reachability, shown beside the network title.
     private var internetStatus: (color: Color, text: String)? {
         switch model.internet {
-        case .online: (.green, "En ligne")
-        case .noInternet: (.orange, "Pas d'accès Internet")
-        case .offline: (.red, "Hors ligne")
+        case .online: (.green, String(localized: "Online"))
+        case .noInternet: (.orange, String(localized: "No Internet access"))
+        case .offline: (.red, String(localized: "Offline"))
         case .unknown: nil
         }
     }
@@ -124,9 +124,9 @@ struct PanelView: View {
                     }
                     .font(.caption.weight(.medium))
                     .foregroundStyle(status.color)
-                    .help("Testé toutes les minutes, à chaque changement de réseau et à l'ouverture du panel")
+                    .help("Checked every minute, on each network change and when the panel opens")
                 } else if let space {
-                    Text("\(Format.bytes(space.free)) libres")
+                    Text("\(Format.bytes(space.free)) free")
                         .font(.system(size: 13, weight: .semibold))
                         .monospacedDigit()
                         .lineLimit(1)
@@ -138,7 +138,7 @@ struct PanelView: View {
                 // Blue while there is room, orange under 10 % free, red under 5 %.
                 let color: Color = freeShare < 0.05 ? .red : freeShare < 0.10 ? .orange : .blue
                 SegmentBar(segments: [(1 - freeShare, color)])
-                Text("\(Format.bytes(space.total - space.free)) utilisés sur \(Format.bytes(space.total))")
+                Text("\(Format.bytes(space.total - space.free)) used of \(Format.bytes(space.total))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
@@ -155,7 +155,7 @@ struct PanelView: View {
             }
             Graph(layers: layers, minScale: 16 * 1024, mirrored: true, outages: outages,
                   height: stacked ? 32 : 40)
-                .help(outages == nil ? "" : "Fond orange : sans accès Internet. Fond rouge : hors ligne.")
+                .help(outages == nil ? "" : String(localized: "Orange background: no Internet access. Red background: offline."))
             if let footer {
                 Text(footer).font(.caption).foregroundStyle(.secondary)
             }
@@ -170,12 +170,12 @@ struct PanelView: View {
     private var processSection: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Switch(selection: $model.groupApps, options: [(true, "Apps"), (false, "Processus")])
+                Switch(selection: $model.groupApps, options: [(true, String(localized: "Apps")), (false, String(localized: "Processes"))])
                 Spacer(minLength: 4)
                 Switch(selection: $model.procWindow, options: ProcWindow.options)
-                    .help("Moyenne du CPU sur cette durée")
+                    .help("CPU averaged over this window")
                 Spacer(minLength: 4)
-                Switch(selection: $model.sortByMemory, options: [(false, "CPU"), (true, "Mém.")])
+                Switch(selection: $model.sortByMemory, options: [(false, "CPU"), (true, String(localized: "Mem."))])
             }
             .padding(.horizontal, 10)
             .padding(.bottom, 2)
@@ -196,11 +196,11 @@ struct PanelView: View {
             }
 
             if model.hiddenProcs > 0 {
-                Text("\(model.hiddenProcs) processus système non lisibles sans privilèges")
+                Text("\(model.hiddenProcs) system processes unreadable without privileges")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                     .padding(.horizontal, 14)
-                    .help("Processus d'autres utilisateurs (root). Leur conso est incluse dans le total CPU.")
+                    .help("Processes of other users (root). Their usage is included in the CPU total.")
             }
         }
         .padding(.vertical, 8)
@@ -210,27 +210,27 @@ struct PanelView: View {
 
     private var footer: some View {
         HStack(alignment: .center, spacing: 2) {
-            IconButton("waveform.path.ecg", tooltip: "Ouvrir le Moniteur d'activité") {
+            IconButton("waveform.path.ecg", tooltip: String(localized: "Open Activity Monitor")) {
                 NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Utilities/Activity Monitor.app"))
             }
             Menu {
-                Picker("Fenêtre de l'icône", selection: $model.iconWindow) {
-                    ForEach([2, 6, 10, 30, 60], id: \.self) { Text("\($0) s").tag($0) }
+                Picker("Icon window", selection: $model.iconWindow) {
+                    ForEach([2, 6, 10, 30, 60], id: \.self) { Text(verbatim: "\($0) s").tag($0) }
                 }
-                Toggle("Lancer au démarrage", isOn: $model.launchAtLogin)
+                Toggle("Launch at login", isOn: $model.launchAtLogin)
                 Divider()
                 if let update = model.update {
-                    Button("Installer Monibar \(update.version)") { model.installUpdate() }
+                    Button("Install Monibar \(update.version)") { model.installUpdate() }
                 }
-                Button("Rechercher les mises à jour") { model.checkForUpdates() }
-                Text("Monibar \(UpdateChecker.currentVersion)")
+                Button("Check for updates") { model.checkForUpdates() }
+                Text(verbatim: "Monibar \(UpdateChecker.currentVersion)")
             } label: {
                 IconGlyph(systemName: model.update == nil ? "gearshape" : "arrow.down.circle")
             }
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             .frame(width: IconButton<IconGlyph>.size.width, height: IconButton<IconGlyph>.size.height)
-            .help("Réglages")
+            .help("Settings")
 
             Spacer()
             // A kill result takes the place of the history switch for 3 s.
@@ -242,11 +242,11 @@ struct PanelView: View {
                     .transition(.opacity)
             } else {
                 Switch(selection: $model.range, options: HistoryRange.allCases.map { ($0, $0.label) })
-                    .help("Durée d'historique des graphes")
+                    .help("Graph history length")
                     .transition(.opacity)
             }
             Spacer()
-            IconButton("power", tooltip: "Quitter") { NSApp.terminate(nil) }
+            IconButton("power", tooltip: String(localized: "Quit")) { NSApp.terminate(nil) }
         }
         .frame(height: IconButton<IconGlyph>.size.height)
         .padding(.horizontal, 8)
@@ -404,7 +404,7 @@ struct ProcessRowView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help("Rechercher sur le web de quoi il s'agit")
+                .help("Search the web for what this is")
             }
             Spacer(minLength: 4)
             Text(Format.cpu(row.cpu))
@@ -428,10 +428,10 @@ struct ProcessRowView: View {
         }
         .contentShape(Rectangle())
         .contextMenu {
-            Button("Rechercher « \(row.name) » sur le web", action: onSearch)
+            Button("Search the web for “\(row.name)”", action: onSearch)
             Divider()
-            Button(row.isApp ? "Quitter" : "Terminer (SIGTERM)") { onKill(false) }
-            Button(row.isApp ? "Forcer à quitter" : "Tuer (SIGKILL)") { onKill(true) }
+            Button(row.isApp ? String(localized: "Quit") : String(localized: "Terminate (SIGTERM)")) { onKill(false) }
+            Button(row.isApp ? String(localized: "Force Quit") : String(localized: "Kill (SIGKILL)")) { onKill(true) }
         }
         .onHover { h in
             hover = h
@@ -445,10 +445,10 @@ struct ProcessRowView: View {
     private var killButton: some View {
         if confirm {
             HStack(spacing: 4) {
-                choice("Forcer", fill: Color.red.opacity(0.75),
-                       help: row.isApp ? "Forcer l'app à quitter" : "Envoyer SIGKILL") { onKill(true) }
-                choice("Quitter", fill: .red,
-                       help: row.isApp ? "Quitter l'app" : "Envoyer SIGTERM") { onKill(false) }
+                choice(String(localized: "Force"), fill: Color.red.opacity(0.75),
+                       help: row.isApp ? String(localized: "Force the app to quit") : String(localized: "Send SIGKILL")) { onKill(true) }
+                choice(String(localized: "Quit"), fill: .red,
+                       help: row.isApp ? String(localized: "Quit the app") : String(localized: "Send SIGTERM")) { onKill(false) }
             }
             .transition(.opacity)
         } else {
@@ -464,7 +464,7 @@ struct ProcessRowView: View {
                     .frame(width: 16, height: 16)
             }
             .buttonStyle(.plain)
-            .help(row.isApp ? "Quitter ou forcer l'app" : "Terminer ou tuer le processus")
+            .help(row.isApp ? String(localized: "Quit or force quit the app") : String(localized: "Terminate or kill the process"))
             .transition(.opacity)
         }
     }

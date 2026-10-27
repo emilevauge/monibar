@@ -72,7 +72,7 @@ enum UpdateChecker {
             return .newer(release)
         } catch {
             NSLog("Monibar: update check failed: %@", "\(error)")
-            return .error("GitHub injoignable")
+            return .error(String(localized: "GitHub unreachable"))
         }
     }
 
@@ -107,8 +107,8 @@ enum UpdateChecker {
     // MARK: notification
 
     private static func registerNotification() {
-        let update = UNNotificationAction(identifier: updateActionID, title: "Mettre à jour", options: [.foreground])
-        let notes = UNNotificationAction(identifier: notesActionID, title: "Notes de version", options: [.foreground])
+        let update = UNNotificationAction(identifier: updateActionID, title: String(localized: "Update"), options: [.foreground])
+        let notes = UNNotificationAction(identifier: notesActionID, title: String(localized: "Release notes"), options: [.foreground])
         let category = UNNotificationCategory(identifier: categoryID, actions: [update, notes],
                                               intentIdentifiers: [], options: [])
         NotificationHub.shared.register(kind: kind, categories: [category]) { action, info in
@@ -132,10 +132,10 @@ enum UpdateChecker {
 
     private static func notify(_ release: GitHubRelease) {
         let content = UNMutableNotificationContent()
-        content.title = "Monibar \(release.version) est disponible"
+        content.title = String(localized: "Monibar \(release.version) is available")
         content.body = release.dmgURL == nil
-            ? "Cliquer pour ouvrir la page de la version."
-            : "Cliquer sur Mettre à jour pour l'installer et relancer Monibar."
+            ? String(localized: "Click to open the release page.")
+            : String(localized: "Click Update to install it and relaunch Monibar.")
         content.sound = .default
         content.categoryIdentifier = categoryID
         var info = ["pageURL": release.pageURL.absoluteString]
@@ -146,7 +146,7 @@ enum UpdateChecker {
 
     static func notifyFailure(_ message: String) {
         let content = UNMutableNotificationContent()
-        content.title = "Monibar n'a pas pu se mettre à jour"
+        content.title = String(localized: "Monibar could not update")
         content.body = message
         content.sound = .default
         NotificationHub.shared.post(kind: kind, id: "monibar.update.failed", content: content)

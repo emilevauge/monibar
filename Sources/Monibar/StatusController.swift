@@ -59,7 +59,7 @@ final class StatusController: NSResponder {
     }
 
     private func updateAccessibility() {
-        item.button?.setAccessibilityLabel("CPU \(lastText ?? "")%" + (icon.offline ? ", pas d'accès Internet" : ""))
+        item.button?.setAccessibilityLabel("CPU \(lastText ?? "")%" + (icon.offline ? ", " + String(localized: "no Internet access") : ""))
     }
 
     /// CPU averaged over the chosen window.

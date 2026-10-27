@@ -30,6 +30,7 @@ Monibar then updates itself: when a new release is out, a notification offers to
 - **Top apps**: the 10 apps or processes using the most CPU or memory. Helper processes are grouped under their app (Chrome, Slack...). CPU is averaged over 10 s, 1 min, 1 h or 1 day, so the ranking stays steady.
 - **Quit apps**: click the cross, then pick Quit, or Force for an app that hangs (SIGTERM or SIGKILL for a process).
 - **What is this?**: hover a row and click the magnifying glass, or right-click it, to search the web for the app or process.
+- **English and French**: follows the macOS language. To add a language, translate `Resources/fr.lproj/Localizable.strings` into `Resources/<lang>.lproj/` and list it under `CFBundleLocalizations` in `build.sh`.
 
 ## Resource use
 

@@ -24,7 +24,7 @@ enum HistoryRange: Int, CaseIterable, Identifiable {
 
 /// Windows the process list can average CPU over, in seconds.
 enum ProcWindow {
-    static let options: [(Int, String)] = [(10, "10s"), (60, "1m"), (3600, "1h"), (86400, "1j")]
+    static let options: [(Int, String)] = [(10, "10s"), (60, "1m"), (3600, "1h"), (86400, String(localized: "1d", comment: "One day, in the process window switch"))]
 }
 
 struct ProcRow: Identifiable, Equatable {
@@ -301,12 +301,13 @@ final class PanelModel: ObservableObject {
         var reason = ""
         if row.isApp, let app = NSRunningApplication(processIdentifier: row.id) {
             ok = force ? app.forceTerminate() : app.terminate()
-            if !ok { reason = "l'app a refusé" }
+            if !ok { reason = String(localized: "the app refused") }
         } else {
             ok = Darwin.kill(row.id, force ? SIGKILL : SIGTERM) == 0
-            if !ok { reason = errno == EPERM ? "permission refusée" : String(cString: strerror(errno)) }
+            if !ok { reason = errno == EPERM ? String(localized: "permission denied") : String(cString: strerror(errno)) }
         }
-        flash(ok ? "\(force ? "Forcé" : "Quitté") : \(row.name)" : "Échec sur \(row.name) : \(reason)")
+        flash(!ok ? String(localized: "Failed on \(row.name): \(reason)")
+              : force ? String(localized: "Force quit: \(row.name)") : String(localized: "Quit: \(row.name)"))
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
             guard let self, self.visible else { return }
             self.appCache[row.id] = nil
@@ -317,10 +318,10 @@ final class PanelModel: ObservableObject {
     func checkForUpdates() {
         Task { @MainActor in
             switch await UpdateChecker.checkManually() {
-            case .upToDate(let current): flash("Monibar \(current) est à jour")
+            case .upToDate(let current): flash(String(localized: "Monibar \(current) is up to date"))
             case .newer(let release):
                 update = release
-                flash("Monibar \(release.version) est disponible")
+                flash(String(localized: "Monibar \(release.version) is available"))
             case .error(let message): flash(message)
             }
         }
@@ -334,7 +335,7 @@ final class PanelModel: ObservableObject {
             NSWorkspace.shared.open(update.pageURL)
             return
         }
-        flash("Téléchargement de Monibar \(update.version)…")
+        flash(String(localized: "Downloading Monibar \(update.version)…"))
         UpdateChecker.install(dmgURL: dmg)
     }
 
@@ -359,7 +360,7 @@ final class PanelModel: ObservableObject {
         do {
             if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
         } catch {
-            flash("Démarrage auto : \(error.localizedDescription)")
+            flash(String(localized: "Launch at login: \(error.localizedDescription)"))
         }
         // A failed or pending registration leaves the switch on the state
         // macOS actually has.

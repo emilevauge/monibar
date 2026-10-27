@@ -19,13 +19,13 @@ enum SelfUpdater {
 
         var description: String {
             switch self {
-            case .notInBundle: "La mise à jour ne marche que pour l'app installée, pas un build de dev."
-            case .translocated: "Déplacer Monibar dans le dossier Applications, puis réessayer."
-            case .notWritable: "Monibar ne peut pas écrire dans son dossier d'installation."
-            case .download(let status): "Le téléchargement a échoué (HTTP \(status.map(String.init) ?? "?"))."
-            case .staging: "L'installation n'a pas pu être préparée."
-            case .spawn: "L'installation n'a pas pu démarrer."
-            case .unsigned: "Cette copie de Monibar n'est pas signée : la mise à jour ne pourrait pas être vérifiée."
+            case .notInBundle: String(localized: "Updates only work for the installed app, not a dev build.")
+            case .translocated: String(localized: "Move Monibar to the Applications folder, then try again.")
+            case .notWritable: String(localized: "Monibar cannot write to its install folder.")
+            case .download(let status): String(localized: "The download failed (HTTP \(status.map(String.init) ?? "?")).")
+            case .staging: String(localized: "The install could not be prepared.")
+            case .spawn: String(localized: "The install could not start.")
+            case .unsigned: String(localized: "This copy of Monibar is not signed, so the update could not be verified.")
             }
         }
     }
@@ -42,7 +42,7 @@ enum SelfUpdater {
             return failure.description
         } catch {
             NSLog("Monibar: update failed: %@", "\(error)")
-            return "Le téléchargement a échoué."
+            return String(localized: "The download failed.")
         }
     }
 

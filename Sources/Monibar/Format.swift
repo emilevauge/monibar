@@ -1,7 +1,9 @@
 import Foundation
 
 enum Format {
-    private static let units = ["o", "Ko", "Mo", "Go", "To"]
+    /// Read once: "o, Ko, Mo" in French, "B, KB, MB" in English.
+    private static let units = [String(localized: "B", comment: "Byte unit"), String(localized: "KB"),
+                                String(localized: "MB"), String(localized: "GB"), String(localized: "TB")]
 
     static func bytes(_ v: Double, decimals: Int = 1) -> String {
         var v = max(0, v)
@@ -10,7 +12,7 @@ enum Format {
             v /= 1024
             i += 1
         }
-        if i == 0 { return "\(Int(v)) o" }
+        if i == 0 { return "\(Int(v)) \(units[0])" }
         let d = v >= 100 ? 0 : decimals
         return String(format: "%.\(d)f %@", v, units[i])
     }
