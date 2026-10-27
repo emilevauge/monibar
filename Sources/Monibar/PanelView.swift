@@ -439,35 +439,49 @@ struct ProcessRowView: View {
         }
     }
 
+    /// First click on the cross asks: quit, or force quit for an app that
+    /// hangs. The choice goes away after 3 s or when the pointer leaves.
+    @ViewBuilder
     private var killButton: some View {
-        Button {
-            if confirm {
-                confirm = false
-                onKill(NSEvent.modifierFlags.contains(.option))
-            } else {
+        if confirm {
+            HStack(spacing: 4) {
+                choice("Forcer", fill: Color.red.opacity(0.75),
+                       help: row.isApp ? "Forcer l'app à quitter" : "Envoyer SIGKILL") { onKill(true) }
+                choice("Quitter", fill: .red,
+                       help: row.isApp ? "Quitter l'app" : "Envoyer SIGTERM") { onKill(false) }
+            }
+            .transition(.opacity)
+        } else {
+            Button {
                 withAnimation(Motion.resize) { confirm = true }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
                     withAnimation(Motion.resize) { confirm = false }
                 }
-            }
-        } label: {
-            if confirm {
-                Text("Quitter")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 8)
-                    .frame(height: 18)
-                    .background(Color.red, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
-                    .transition(.opacity)
-            } else {
+            } label: {
                 Image(systemName: "xmark.circle.fill")
                     .font(.system(size: 13))
                     .foregroundStyle(hover ? .secondary : .quaternary)
                     .frame(width: 16, height: 16)
-                    .transition(.opacity)
             }
+            .buttonStyle(.plain)
+            .help(row.isApp ? "Quitter ou forcer l'app" : "Terminer ou tuer le processus")
+            .transition(.opacity)
+        }
+    }
+
+    private func choice(_ title: String, fill: Color, help: String, action: @escaping () -> Void) -> some View {
+        Button {
+            confirm = false
+            action()
+        } label: {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 7)
+                .frame(height: 18)
+                .background(fill, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
         }
         .buttonStyle(.plain)
-        .help(row.isApp ? "Quitter l'app (⌥ pour forcer)" : "Envoyer SIGTERM (⌥ pour SIGKILL)")
+        .help(help)
     }
 }
