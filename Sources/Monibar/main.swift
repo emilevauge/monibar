@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UserNotifications
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -39,6 +40,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if args.contains("--snapshot") { snapshot(light: args.contains("--light")) }
         if let n = ProcessInfo.processInfo.environment["MB_CYCLES"].flatMap(Int.init) { cycle(n) }
         if ProcessInfo.processInfo.environment["MB_BENCH"] != nil { bench() }
+        // MB_DRIFT (debug): Monibar itself at 95 % of a core for 10 min, to see the alert.
+        if ProcessInfo.processInfo.environment["MB_DRIFT"] != nil {
+            let me = getpid()
+            for _ in 0..<10 { model.drift.feed([DriftWatch.Sample(pid: me, cpu: 95, mem: 0)]) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                UNUserNotificationCenter.current().getDeliveredNotifications { list in
+                    for n in list where n.request.identifier.hasPrefix("monibar.drift") {
+                        print(n.request.content.title, "|", n.request.content.body)
+                    }
+                    exit(0)
+                }
+            }
+        }
     }
 
     /// Debug: times each sampling step, then quits.

@@ -109,6 +109,7 @@ final class PanelModel: ObservableObject {
     private let sampler: SystemSampler
     private let procSampler = ProcessSampler()
     private let connectivity = Connectivity()
+    let drift = DriftWatch()
     private var lastProcs: [ProcSample] = []
     private var diskSpaceAt = Date.distantPast
     /// App name and icon by pid, for the rows shown. A pid that is not an
@@ -170,7 +171,19 @@ final class PanelModel: ObservableObject {
     /// Called once a minute: feeds the 1 h and 1 d averages of the process
     /// list, and the history of the graphs while the panel is closed.
     func minuteTick() {
-        procSampler.takeSnapshot()
+        var samples = procSampler.takeSnapshot()
+        // Other users' processes (coreaudiod...) through ps, off the main
+        // thread: about 20 ms of CPU a minute.
+        DispatchQueue.global(qos: .utility).async { [drift] in
+            let others = ProcessSampler.readOthers()
+            DispatchQueue.main.async {
+                let readable = Set(samples.map(\.pid))
+                for (pid, o) in others where !readable.contains(pid) {
+                    samples.append(DriftWatch.Sample(pid: pid, cpu: o.cpu, mem: o.mem))
+                }
+                drift.feed(samples)
+            }
+        }
         connectivity.probe()
         // While open, the panel samples every tick already.
         if !visible { sampler.sampleOthers() }

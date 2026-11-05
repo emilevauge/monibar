@@ -84,9 +84,24 @@ final class ProcessSampler {
     private var othersAt = Date.distantPast
     private var othersRunning = false
 
-    /// Called once a minute, panel open or not.
-    func takeSnapshot() {
-        let snap = scan(withMemory: false).snapshot.compacted()
+    /// Called once a minute, panel open or not. Returns each readable
+    /// process's CPU over the last minute and its memory, for `DriftWatch`.
+    @discardableResult
+    func takeSnapshot() -> [DriftWatch.Sample] {
+        let (full, mems) = scan(withMemory: true)
+        let snap = full.compacted()
+        var out = [DriftWatch.Sample]()
+        if let prev = minutes.last, snap.at > prev.at {
+            let span = Double(snap.at - prev.at)
+            out.reserveCapacity(snap.pids.count)
+            for i in snap.pids.indices {
+                var cpu = 0.0
+                if let j = prev.index(of: snap.pids[i]), prev.starts[j] == snap.starts[i], snap.cpus[i] >= prev.cpus[j] {
+                    cpu = Double(snap.cpus[i] - prev.cpus[j]) / span * 100
+                }
+                out.append(DriftWatch.Sample(pid: snap.pids[i], cpu: cpu, mem: mems[i]))
+            }
+        }
         func keep(_ list: inout [Snapshot], every: Double, count: Int) {
             guard list.last.map({ seconds(snap.at - $0.at) >= every - 5 }) ?? true else { return }
             list.append(snap)
@@ -95,6 +110,7 @@ final class ProcessSampler {
         keep(&minutes, every: 60, count: 11)
         keep(&fives, every: 5 * 60, count: 13)
         keep(&quarters, every: 15 * 60, count: 97)
+        return out
     }
 
     /// Frees what only the panel needs.
@@ -254,7 +270,7 @@ final class ProcessSampler {
         return name
     }
 
-    private static func lookUpName(_ pid: pid_t) -> String {
+    static func lookUpName(_ pid: pid_t) -> String {
         var buf = [CChar](repeating: 0, count: 4096)
         if proc_pidpath(pid, &buf, UInt32(buf.count)) > 0 {
             let path = String(cString: buf)
