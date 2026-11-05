@@ -303,7 +303,7 @@ final class PanelModel: ObservableObject {
             ok = force ? app.forceTerminate() : app.terminate()
             if !ok { reason = String(localized: "the app refused") }
         } else {
-            ok = Darwin.kill(row.id, force ? SIGKILL : SIGTERM) == 0
+            ok = row.id > 0 && Darwin.kill(row.id, force ? SIGKILL : SIGTERM) == 0
             if !ok { reason = errno == EPERM ? String(localized: "permission denied") : String(cString: strerror(errno)) }
         }
         flash(!ok ? String(localized: "Failed on \(row.name): \(reason)")

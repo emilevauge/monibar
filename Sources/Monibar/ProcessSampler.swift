@@ -52,8 +52,9 @@ private struct Snapshot {
 /// counters is taken once a minute (about 1 ms). Snapshots are kept 10 min
 /// at that pace, 1 h at one per 5 min and 24 h at one per 15 min, so the
 /// list can average over up to a day; about 120 snapshots of ~10 KB.
-/// Processes owned by other users (root daemons) are not readable without
-/// privileges and are skipped.
+/// Processes owned by other users (root daemons, coreaudiod) are not
+/// readable without privileges: while the panel is open, `/bin/ps`, which is
+/// setuid root, gives their CPU every 6 s.
 final class ProcessSampler {
     static let snapshotInterval: TimeInterval = 60
 
@@ -78,6 +79,10 @@ final class ProcessSampler {
     }()
     /// Process count from the last scan, readable or not.
     private(set) var total = 0
+    /// CPU and memory of the processes `scan` cannot read, from `ps`.
+    private var others: [pid_t: (cpu: Double, mem: UInt64)] = [:]
+    private var othersAt = Date.distantPast
+    private var othersRunning = false
 
     /// Called once a minute, panel open or not.
     func takeSnapshot() {
@@ -96,11 +101,14 @@ final class ProcessSampler {
     func panelClosed() {
         recent.removeAll()
         meta.removeAll()
+        others.removeAll()
+        othersAt = .distantPast
     }
 
     /// CPU averaged over the last `window` seconds, or over the history
     /// available when shorter.
     func sample(window: TimeInterval) -> [ProcSample] {
+        refreshOthers()
         let (now, mems) = scan(withMemory: true)
         let base = baseline(for: now.at, window: window)
         recent.append(now)
@@ -135,6 +143,11 @@ final class ProcessSampler {
             }
             out.append(ProcSample(pid: pid, cpu: cpu, mem: mems[i],
                                   responsible: m.responsible > 0 ? m.responsible : pid))
+        }
+        // shortcut: ps gives a CPU average decayed by the kernel, not one over
+        // `window`; exact windows would need root.
+        for (pid, o) in others where now.index(of: pid) == nil {
+            out.append(ProcSample(pid: pid, cpu: o.cpu, mem: o.mem, responsible: pid))
         }
         // Exited processes: a panel left open for days would keep them all.
         if meta.count > seen.count + 64 { meta = meta.filter { seen.contains($0.key) } }
@@ -185,6 +198,46 @@ final class ProcessSampler {
             if withMemory { mems.append(ri.ri_phys_footprint) }
         }
         return (snap, mems)
+    }
+
+    /// Runs `ps` off the main thread, at most every 6 s: one run costs
+    /// about 18 ms of CPU.
+    private func refreshOthers() {
+        guard !othersRunning, Date().timeIntervalSince(othersAt) >= 6 else { return }
+        othersRunning = true
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let result = Self.readOthers()
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.othersRunning = false
+                self.othersAt = Date()
+                self.others = result
+            }
+        }
+    }
+
+    /// Every process with a pid above 0: pid 0 is the kernel, and a kill on
+    /// pid 0 would hit Monibar's own process group.
+    static func readOthers() -> [pid_t: (cpu: Double, mem: UInt64)] {
+        let ps = Process()
+        ps.executableURL = URL(fileURLWithPath: "/bin/ps")
+        ps.arguments = ["-A", "-o", "pid=,%cpu=,rss="]
+        // A French locale would print "79,2".
+        ps.environment = ["LC_ALL": "C"]
+        let pipe = Pipe()
+        ps.standardOutput = pipe
+        ps.standardError = FileHandle.nullDevice
+        guard (try? ps.run()) != nil else { return [:] }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        ps.waitUntilExit()
+        var out: [pid_t: (cpu: Double, mem: UInt64)] = [:]
+        for line in String(decoding: data, as: UTF8.self).split(separator: "\n") {
+            let f = line.split(separator: " ")
+            guard f.count == 3, let pid = pid_t(f[0]), pid > 0,
+                  let cpu = Double(f[1]), let kb = UInt64(f[2]) else { continue }
+            out[pid] = (cpu, kb * 1024)
+        }
+        return out
     }
 
     private func seconds(_ ticks: UInt64) -> Double {
