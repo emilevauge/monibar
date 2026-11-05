@@ -51,15 +51,32 @@ final class StatusController: NSResponder {
 
     // MARK: Icon
 
+    private var offline = false
+    private var hog = false
+
     /// No Internet, offline or not: a crossed-out Wi-Fi in the chip.
     func setOffline(_ on: Bool) {
-        guard on != icon.offline else { return }
-        icon.setOffline(on)
+        offline = on
+        updateSymbol()
+    }
+
+    /// A process above the alert limits: an exclamation mark in the chip.
+    func setHog(_ on: Bool) {
+        hog = on
+        updateSymbol()
+    }
+
+    /// Without Internet wins: the hog has its notification already.
+    private func updateSymbol() {
+        icon.setSymbol(offline ? "wifi.slash" : hog ? "exclamationmark" : nil)
         updateAccessibility()
     }
 
     private func updateAccessibility() {
-        item.button?.setAccessibilityLabel("CPU \(lastText ?? "")%" + (icon.offline ? ", " + String(localized: "no Internet access") : ""))
+        var label = "CPU \(lastText ?? "")%"
+        if offline { label += ", " + String(localized: "no Internet access") }
+        if hog { label += ", " + String(localized: "a process is hogging the Mac") }
+        item.button?.setAccessibilityLabel(label)
     }
 
     /// CPU averaged over the chosen window.

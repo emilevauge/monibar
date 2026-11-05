@@ -2,8 +2,9 @@ import AppKit
 
 /// Menu bar icon: a CPU chip whose body fills from the bottom with the load,
 /// green under 50 %, orange under 80 %, red above, three pins on each side.
-/// No number: the fill and its color tell the load. Without Internet, a
-/// crossed-out Wi-Fi in the outline's ink shows in the middle of the chip.
+/// No number: the fill and its color tell the load. An alert symbol in the
+/// outline's ink shows in the middle of the chip: a crossed-out Wi-Fi
+/// without Internet, an exclamation mark while a process hogs the Mac.
 ///
 /// Built from CALayers, so an update only moves the fill edge: no image is
 /// redrawn.
@@ -24,7 +25,7 @@ final class IconView: NSView {
     private let pins = (0..<12).map { _ in CALayer() }
     private var level: Level?
     private var shownHeight: CGFloat = -1
-    private(set) var offline = false
+    private(set) var symbol: String?
 
     /// Green under 50 %, orange under 80 %, red above.
     private enum Level {
@@ -90,26 +91,26 @@ final class IconView: NSView {
         super.viewDidChangeEffectiveAppearance()
         applyInk()
         level.map(applyColors)
-        if offline { renderAlert() }
+        if symbol != nil { renderAlert() }
     }
 
     override func viewDidChangeBackingProperties() {
         super.viewDidChangeBackingProperties()
-        if offline { renderAlert() }
+        if symbol != nil { renderAlert() }
     }
 
-    /// Shows or hides the no-Internet alert.
-    func setOffline(_ on: Bool) {
-        guard on != offline else { return }
-        offline = on
+    /// Shows the SF Symbol `name` in the chip, or hides it with nil.
+    func setSymbol(_ name: String?) {
+        guard name != symbol else { return }
+        symbol = name
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        if on { renderAlert() }
-        alert.isHidden = !on
+        if name != nil { renderAlert() }
+        alert.isHidden = name == nil
         CATransaction.commit()
     }
 
-    /// Crossed-out Wi-Fi in the outline's ink, white on a dark menu bar and
+    /// The symbol in the outline's ink, white on a dark menu bar and
     /// black on a light one, rendered at the screen's scale. Bold, so it
     /// holds over the colored fill.
     private func renderAlert() {
@@ -122,7 +123,7 @@ final class IconView: NSView {
         ink = ink.withAlphaComponent(1)
         let config = NSImage.SymbolConfiguration(pointSize: 9.5, weight: .heavy)
             .applying(.init(paletteColors: [ink]))
-        guard let image = NSImage(systemSymbolName: "wifi.slash", accessibilityDescription: nil)?
+        guard let symbol, let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
             .withSymbolConfiguration(config) else { return }
         let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
         var rect = NSRect(origin: .zero, size: image.size)

@@ -91,3 +91,4 @@
 "%@ of a core, above %lld%% for %lld min." = "%1$@ d'un cœur, au-dessus de %2$lld %% depuis %3$lld min.";
 "%@ is using more and more memory" = "%@ consomme de plus en plus de mémoire";
 "%@, up %lld%% in 1 h." = "%1$@, +%2$lld %% en 1 h.";
+"a process is hogging the Mac" = "un processus surcharge le Mac";

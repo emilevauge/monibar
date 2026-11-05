@@ -28,6 +28,9 @@ final class DriftWatch {
     /// Footprint each minute over the last hour, for processes above 1 GB only.
     private var memHistory: [pid_t: [(at: Date, mem: UInt64)]] = [:]
     private var alertedAt: [pid_t: Date] = [:]
+    /// True while a process is above the limits, for the icon.
+    var onActiveChange: ((Bool) -> Void)?
+    private var active = false
 
     init() {
         let quit = UNNotificationAction(identifier: Self.quitID, title: String(localized: "Quit"), options: [])
@@ -49,11 +52,13 @@ final class DriftWatch {
         alertedAt = alertedAt.filter { now.timeIntervalSince($0.value) < 3600 }
         var hot: [pid_t: Int] = [:]
         var mems: [pid_t: [(at: Date, mem: UInt64)]] = [:]
+        var hogging = false
         for s in samples {
             if s.cpu >= Self.cpuLimit {
                 let n = (hotMinutes[s.pid] ?? 0) + 1
                 hot[s.pid] = n
                 if n >= Self.cpuMinutes {
+                    hogging = true
                     alert(s.pid, title: { String(localized: "\($0) is using a lot of CPU") },
                           body: String(localized: "\(Format.cpu(s.cpu)) of a core, above \(Int(Self.cpuLimit))% for \(n) min."))
                 }
@@ -64,6 +69,7 @@ final class DriftWatch {
             mems[s.pid] = history
             if s.mem >= Self.memLimit, let first = history.first, now.timeIntervalSince(first.at) >= 55 * 60,
                Double(s.mem) >= Double(first.mem) * Self.memGrowth {
+                hogging = true
                 let growth = Int((Double(s.mem) / Double(first.mem) - 1) * 100)
                 alert(s.pid, title: { String(localized: "\($0) is using more and more memory") },
                       body: String(localized: "\(Format.bytes(s.mem)), up \(growth)% in 1 h."))
@@ -72,6 +78,10 @@ final class DriftWatch {
         // Processes gone or calm again drop out.
         hotMinutes = hot
         memHistory = mems
+        if hogging != active {
+            active = hogging
+            onActiveChange?(hogging)
+        }
     }
 
     private func alert(_ pid: pid_t, title: (String) -> String, body: String) {

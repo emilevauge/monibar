@@ -17,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let forceOffline = ProcessInfo.processInfo.environment["MB_OFFLINE"] != nil
         model.onOfflineChange = { [weak self] in self?.status.setOffline($0 || forceOffline) }
         if forceOffline { status.setOffline(true) }
+        model.drift.onActiveChange = { [weak self] in self?.status.setHog($0) }
 
         sampler.sampleCPU()
         updateIcon()
@@ -44,6 +45,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if ProcessInfo.processInfo.environment["MB_DRIFT"] != nil {
             let me = getpid()
             for _ in 0..<10 { model.drift.feed([DriftWatch.Sample(pid: me, cpu: 95, mem: 0)]) }
+            // The status item's window, for `screencapture -l`.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                if let item = NSApp.windows.first(where: { $0.className.contains("StatusBar") }) {
+                    print("icon window", item.windowNumber)
+                    fflush(stdout)
+                }
+            }
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                 UNUserNotificationCenter.current().getDeliveredNotifications { list in
                     for n in list where n.request.identifier.hasPrefix("monibar.drift") {
@@ -156,6 +164,25 @@ MainActor.assumeIsolated {
     let args = CommandLine.arguments
     if let i = args.firstIndex(of: "--generate-icon"), i + 1 < args.count {
         exit(AppIcon.writePNG(to: args[i + 1]) ? 0 : 1)
+    }
+    // Debug: `Monibar --icon out.png [symbol]` renders the menu bar icon at 45 % on dark.
+    if let i = args.firstIndex(of: "--icon"), i + 1 < args.count {
+        let view = IconView(frame: .zero)
+        view.appearance = NSAppearance(named: .darkAqua)
+        view.update(value: 0.45)
+        view.setSymbol(i + 2 < args.count ? args[i + 2] : nil)
+        let scale: CGFloat = 8
+        let size = IconView.size
+        let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width * scale), pixelsHigh: Int(size.height * scale),
+                                   bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                   colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+        let ctx = NSGraphicsContext(bitmapImageRep: rep)!.cgContext
+        ctx.setFillColor(NSColor(white: 0.15, alpha: 1).cgColor)
+        ctx.fill(CGRect(x: 0, y: 0, width: size.width * scale, height: size.height * scale))
+        ctx.scaleBy(x: scale, y: scale)
+        view.layer?.render(in: ctx)
+        try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: args[i + 1]))
+        exit(0)
     }
     let app = NSApplication.shared
     let delegate = AppDelegate()
