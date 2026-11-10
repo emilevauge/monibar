@@ -420,12 +420,13 @@ struct ProcessRowView: View {
         .padding(.horizontal, 14)
         .frame(height: Self.height)
         .background {
-            if hover {
+            if row.hog || hover {
                 RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(Color.primary.opacity(0.06))
+                    .fill(row.hog ? Color.red.opacity(hover ? 0.22 : 0.15) : Color.primary.opacity(0.06))
                     .padding(.horizontal, 6)
             }
         }
+        .help(row.hog ? String(localized: "Above the alert limits") : "")
         .contentShape(Rectangle())
         .contextMenu {
             Button("Search the web for “\(row.name)”", action: onSearch)

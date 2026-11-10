@@ -35,9 +35,11 @@ struct ProcRow: Identifiable, Equatable {
     let count: Int
     let isApp: Bool
     let icon: NSImage?
+    /// Holds a process above the alert limits, see `DriftWatch`.
+    let hog: Bool
 
     static func == (a: ProcRow, b: ProcRow) -> Bool {
-        a.id == b.id && a.name == b.name && a.cpu == b.cpu && a.mem == b.mem && a.count == b.count
+        a.id == b.id && a.name == b.name && a.cpu == b.cpu && a.mem == b.mem && a.count == b.count && a.hog == b.hog
     }
 }
 
@@ -273,10 +275,13 @@ final class PanelModel: ObservableObject {
         } else {
             entries.sort { $0.cpu != $1.cpu ? $0.cpu > $1.cpu : $0.mem > $1.mem }
         }
+        let hogRows = drift.hogs.isEmpty ? [] : Set(lastProcs.filter { drift.hogs.contains($0.pid) }
+            .map { groupApps ? $0.responsible : $0.pid })
         let top = entries.prefix(Self.rowCount).map { e -> ProcRow in
             let app = groupApps ? appInfo(e.pid) : nil
             return ProcRow(id: e.pid, name: app?.name ?? procSampler.name(of: e.pid),
-                           cpu: e.cpu, mem: e.mem, count: e.count, isApp: app != nil, icon: app?.icon)
+                           cpu: e.cpu, mem: e.mem, count: e.count, isApp: app != nil, icon: app?.icon,
+                           hog: hogRows.contains(e.pid))
         }
         if top != rows { rows = top }
         if appCache.count > Self.rowCount * 3 {
