@@ -322,7 +322,12 @@ final class PanelModel: ObservableObject {
             if !ok { reason = String(localized: "the app refused") }
         } else {
             ok = row.id > 0 && Darwin.kill(row.id, force ? SIGKILL : SIGTERM) == 0
-            if !ok { reason = errno == EPERM ? String(localized: "permission denied") : String(cString: strerror(errno)) }
+            if !ok, row.id > 0, errno == EPERM {
+                // Another user's process: ask for an administrator password.
+                if let error = DriftWatch.adminKill(row.id, force: force) { reason = error } else { ok = true }
+            } else if !ok {
+                reason = String(cString: strerror(errno))
+            }
         }
         flash(!ok ? String(localized: "Failed on \(row.name): \(reason)")
               : force ? String(localized: "Force quit: \(row.name)") : String(localized: "Quit: \(row.name)"))

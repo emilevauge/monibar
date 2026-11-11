@@ -93,3 +93,4 @@
 "%@, up %lld%% in 1 h." = "%1$@, +%2$lld %% en 1 h.";
 "a process is hogging the Mac" = "un processus surcharge le Mac";
 "Above the alert limits" = "Au-dessus des seuils d’alerte";
+"cancelled" = "annulé";

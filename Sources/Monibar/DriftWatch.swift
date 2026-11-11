@@ -108,10 +108,18 @@ final class DriftWatch {
         }
         if Darwin.kill(pid, force ? SIGKILL : SIGTERM) == 0 { return }
         guard errno == EPERM else { return }
+        if let error = adminKill(pid, force: force) { NSLog("Monibar: admin kill of %d failed: %@", pid, error) }
+    }
+
+    /// Kills as root, after the system asks for an administrator password,
+    /// like Activity Monitor. Returns nil on success, else the reason.
+    static func adminKill(_ pid: pid_t, force: Bool) -> String? {
         NSApp.activate(ignoringOtherApps: true)
         let script = "do shell script \"kill -\(force ? "KILL" : "TERM") \(pid)\" with administrator privileges"
         var error: NSDictionary?
         NSAppleScript(source: script)?.executeAndReturnError(&error)
-        if let error { NSLog("Monibar: admin kill of %d failed: %@", pid, error) }
+        guard let error else { return nil }
+        if error[NSAppleScript.errorNumber] as? Int == -128 { return String(localized: "cancelled") }
+        return error[NSAppleScript.errorMessage] as? String ?? String(localized: "permission denied")
     }
 }
